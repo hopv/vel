@@ -1,6 +1,8 @@
-# Vel
+# Vel 
 
-Vel is a language for verified low-level software.
+<p><img src="./logo/logo.svg" height="70" alt="Vel's logo" /></p>
+
+A language for verified low-level software.
 
 It dreams to be something like *Rust with logic*  
 ― a language that empowers people to build verified low-level software.
