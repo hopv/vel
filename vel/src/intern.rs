@@ -1,67 +1,93 @@
 use bumpalo::Bump;
+use std::fmt::{Debug, Display};
 use std::{collections::hash_map::HashMap, hash::Hash};
 
-/// Intern, wrapping `&'arn T`
-/// `T` can be `?Sized` (e.g., `str`)
-#[derive(Debug)]
-pub struct Intern<'arn, T: ?Sized>(pub &'arn T);
+/// Intern, wrapping `&'arn T`.
+///
+/// `T` can be `?Sized` (e.g., `str`).
+pub struct Intern<'arn, T: ?Sized> {
+    /// Private body.
+    body: &'arn T,
+}
 
-/// `#[derive(Copy, Clone)]` didn't work, probably because of `T: ?Sized`
+/// Mysteriously, `#[derive(Copy, Clone)]` doesn't work.
 impl<'arn, T: ?Sized> Copy for Intern<'arn, T> {}
 impl<'arn, T: ?Sized> Clone for Intern<'arn, T> {
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 
 impl<'arn, T: ?Sized> Intern<'arn, T> {
-    /// Turn into a raw pointer
+    /// Turns into a raw pointer.
+    #[inline]
     pub fn raw(&self) -> *const T {
-        self.0
+        self.body
     }
 }
 
-impl<'arn, T: ?Sized> PartialEq for Intern<'arn, T> {
+impl<T: ?Sized + Debug> Debug for Intern<'_, T> {
+    /// Debug outputs the pointer's address.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Intern({:?}: {:?})", self.raw(), self.body)
+    }
+}
+
+impl<T: ?Sized + Display> Display for Intern<'_, T> {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.body.fmt(f)
+    }
+}
+
+impl<T: ?Sized> PartialEq for Intern<'_, T> {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.raw() == other.raw()
     }
 }
-impl<'arn, T: ?Sized> Eq for Intern<'arn, T> {}
+impl<T: ?Sized> Eq for Intern<'_, T> {}
 
-impl<'arn, T: ?Sized> Hash for Intern<'arn, T> {
+impl<T: ?Sized> Hash for Intern<'_, T> {
+    #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.raw().hash(state)
     }
 }
 
-impl<'arn, T: ?Sized> PartialOrd for Intern<'arn, T> {
+impl<T: ?Sized> PartialOrd for Intern<'_, T> {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.raw().partial_cmp(&other.raw())
     }
 }
-impl<'arn, T: ?Sized> Ord for Intern<'arn, T> {
+impl<T: ?Sized> Ord for Intern<'_, T> {
+    #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.raw().cmp(&other.raw())
     }
 }
 
-impl<'arn, T: ?Sized> std::ops::Deref for Intern<'arn, T> {
+impl<T: ?Sized> std::ops::Deref for Intern<'_, T> {
     type Target = T;
+    #[inline]
     fn deref(&self) -> &Self::Target {
-        self.0
+        self.body
     }
 }
 
-/// Performs interning for sized types
+/// Interns objects of a sized type `T`.
 pub struct Interner<'arn, T> {
-    /// Arena
+    /// Arena.
     arena: &'arn Bump,
-    /// Memoization table
+    /// Memoization table.
     memo: HashMap<T, Intern<'arn, T>>,
 }
 
 impl<'arn, T: Eq + Hash + Clone> Interner<'arn, T> {
-    /// Create a new interner
+    /// Creates a new interner.
+    #[inline]
     pub fn new(arena: &'arn Bump) -> Self {
         Self {
             arena,
@@ -69,23 +95,26 @@ impl<'arn, T: Eq + Hash + Clone> Interner<'arn, T> {
         }
     }
 
-    /// Intern a value
-    pub fn intern(&mut self, val: T) -> Intern<'arn, T> {
-        let entry = self.memo.entry(val.clone());
-        *entry.or_insert_with(|| Intern(self.arena.alloc(val)))
+    /// Interns an object.
+    pub fn intern(&mut self, obj: T) -> Intern<'arn, T> {
+        let entry = self.memo.entry(obj.clone());
+        *entry.or_insert_with(|| Intern {
+            body: self.arena.alloc(obj),
+        })
     }
 }
 
-/// Performs interning for strings
-pub struct StringInterner<'arn> {
-    /// Arena
+/// Interns strings.
+pub struct StrInterner<'arn> {
+    /// Arena.
     arena: &'arn Bump,
-    /// Memoization table
+    /// Memoization table.
     memo: HashMap<String, Intern<'arn, str>>,
 }
 
-impl<'arn> StringInterner<'arn> {
-    /// Create a new interner
+impl<'arn> StrInterner<'arn> {
+    /// Creates a new interner.
+    #[inline]
     pub fn new(arena: &'arn Bump) -> Self {
         Self {
             arena,
@@ -93,9 +122,11 @@ impl<'arn> StringInterner<'arn> {
         }
     }
 
-    /// Intern a string
-    pub fn intern(&mut self, val: &str) -> Intern<'arn, str> {
-        let entry = self.memo.entry(val.to_string());
-        *entry.or_insert_with(|| Intern(self.arena.alloc_str(val)))
+    /// Interns a string.
+    pub fn intern(&mut self, s: &str) -> Intern<'arn, str> {
+        let entry = self.memo.entry(s.to_string());
+        *entry.or_insert_with(|| Intern {
+            body: self.arena.alloc_str(s),
+        })
     }
 }
