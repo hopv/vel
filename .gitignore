@@ -1,8 +1,12 @@
+# Mac
 
-.vscode
 .DS_Store
+
+# VS Code
+
+.vscode/
 
 # Rust
 
-vel/target/
+**/target/
 Cargo.lock
