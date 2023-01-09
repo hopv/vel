@@ -10,3 +10,18 @@ The heart of Vel, its language engine, written in Rust.
 - [ ] Formatter
 - [ ] Parser
 - [ ] Type checker
+- [ ] LSP server
+
+## Install
+
+This crate is currently not published to [crates.io](https://crates.io/).
+
+To build and install the latest binary of `vel` from GitHub, run:
+```shell
+> cargo install --git https://github.com/hopv/vel
+```
+
+You can also build and install your local version of `vel` by running:
+```shell
+> cargo install --path path/to/vel
+```
