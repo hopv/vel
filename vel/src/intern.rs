@@ -1,4 +1,5 @@
 use bumpalo::Bump;
+use std::cell::UnsafeCell;
 use std::fmt::{Debug, Display};
 use std::{collections::hash_map::HashMap, hash::Hash};
 
@@ -82,7 +83,7 @@ pub struct Interner<'arn, T> {
     /// Arena.
     arena: &'arn Bump,
     /// Memoization table.
-    memo: HashMap<T, Intern<'arn, T>>,
+    memo: UnsafeCell<HashMap<T, Intern<'arn, T>>>,
 }
 
 impl<'arn, T: Eq + Hash + Clone> Interner<'arn, T> {
@@ -91,14 +92,15 @@ impl<'arn, T: Eq + Hash + Clone> Interner<'arn, T> {
     pub fn new(arena: &'arn Bump) -> Self {
         Self {
             arena,
-            memo: HashMap::new(),
+            memo: UnsafeCell::new(HashMap::new()),
         }
     }
 
     /// Interns an object.
-    pub fn intern(&mut self, obj: T) -> Intern<'arn, T> {
-        let entry = self.memo.entry(obj.clone());
-        *entry.or_insert_with(|| Intern {
+    pub fn intern(&self, obj: T) -> Intern<'arn, T> {
+        // This is safe because only a shared reference is finally returned.
+        let memo = unsafe { &mut *self.memo.get() };
+        *memo.entry(obj.clone()).or_insert_with(|| Intern {
             body: self.arena.alloc(obj),
         })
     }
@@ -109,7 +111,7 @@ pub struct StrInterner<'arn> {
     /// Arena.
     arena: &'arn Bump,
     /// Memoization table.
-    memo: HashMap<String, Intern<'arn, str>>,
+    memo: UnsafeCell<HashMap<String, Intern<'arn, str>>>,
 }
 
 impl<'arn> StrInterner<'arn> {
@@ -118,14 +120,15 @@ impl<'arn> StrInterner<'arn> {
     pub fn new(arena: &'arn Bump) -> Self {
         Self {
             arena,
-            memo: HashMap::new(),
+            memo: UnsafeCell::new(HashMap::new()),
         }
     }
 
     /// Interns a string.
-    pub fn intern(&mut self, s: &str) -> Intern<'arn, str> {
-        let entry = self.memo.entry(s.to_string());
-        *entry.or_insert_with(|| Intern {
+    pub fn intern(&self, s: &str) -> Intern<'arn, str> {
+        // This is safe because only a shared reference is finally returned.
+        let memo = unsafe { &mut *self.memo.get() };
+        *memo.entry(s.to_string()).or_insert_with(|| Intern {
             body: self.arena.alloc_str(s),
         })
     }

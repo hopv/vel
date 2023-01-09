@@ -17,7 +17,7 @@ impl<'arn> Ctx<'arn> {
 
     /// Interns a string.
     #[inline]
-    pub fn intern_str(&mut self, s: &str) -> Intern<'arn, str> {
+    pub fn intern_str(&self, s: &str) -> Intern<'arn, str> {
         self.str_interner.intern(s)
     }
 }

@@ -109,7 +109,7 @@ pub fn lex<'arn>(
     from: Pos,
     mut ins: impl Iterator<Item = char>,
     out: impl FnMut(Token<'arn>, Span),
-    ctx: &mut Ctx<'arn>,
+    ctx: &Ctx<'arn>,
 ) {
     if let Some(c) = ins.next() {
         lex_any(c, from, ins, out, ctx);
@@ -122,7 +122,7 @@ fn lex_any<'arn>(
     from: Pos,
     ins: impl Iterator<Item = char>,
     mut out: impl FnMut(Token<'arn>, Span),
-    ctx: &mut Ctx<'arn>,
+    ctx: &Ctx<'arn>,
 ) {
     {
         let otok = match c {
@@ -194,7 +194,7 @@ fn lex_eq<'arn>(
     from: Pos,
     mut ins: impl Iterator<Item = char>,
     mut out: impl FnMut(Token<'arn>, Span),
-    ctx: &mut Ctx<'arn>,
+    ctx: &Ctx<'arn>,
 ) {
     match ins.next() {
         None => {
@@ -223,7 +223,7 @@ fn lex_tilde<'arn>(
     from: Pos,
     mut ins: impl Iterator<Item = char>,
     mut out: impl FnMut(Token<'arn>, Span),
-    ctx: &mut Ctx<'arn>,
+    ctx: &Ctx<'arn>,
 ) {
     match ins.next() {
         None => {
@@ -252,7 +252,7 @@ fn lex_slash<'arn>(
     from: Pos,
     mut ins: impl Iterator<Item = char>,
     mut out: impl FnMut(Token<'arn>, Span),
-    ctx: &mut Ctx<'arn>,
+    ctx: &Ctx<'arn>,
 ) {
     match ins.next() {
         None => {
@@ -285,7 +285,7 @@ fn lex_slash2<'arn>(
     from: Pos,
     mut ins: impl Iterator<Item = char>,
     mut out: impl FnMut(Token<'arn>, Span),
-    ctx: &mut Ctx<'arn>,
+    ctx: &Ctx<'arn>,
 ) {
     // Lexes a line comment
     let mut s = String::new();
@@ -316,7 +316,7 @@ fn lex_backslash<'arn>(
     from: Pos,
     mut ins: impl Iterator<Item = char>,
     mut out: impl FnMut(Token<'arn>, Span),
-    ctx: &mut Ctx<'arn>,
+    ctx: &Ctx<'arn>,
 ) {
     match ins.next() {
         None => {
@@ -345,7 +345,7 @@ fn lex_lt<'arn>(
     from: Pos,
     mut ins: impl Iterator<Item = char>,
     mut out: impl FnMut(Token<'arn>, Span),
-    ctx: &mut Ctx<'arn>,
+    ctx: &Ctx<'arn>,
 ) {
     match ins.next() {
         None => {
@@ -374,7 +374,7 @@ fn lex_gt<'arn>(
     from: Pos,
     mut ins: impl Iterator<Item = char>,
     mut out: impl FnMut(Token<'arn>, Span),
-    ctx: &mut Ctx<'arn>,
+    ctx: &Ctx<'arn>,
 ) {
     match ins.next() {
         None => {
@@ -404,7 +404,7 @@ fn lex_whitespace<'arn>(
     from: Pos,
     mut ins: impl Iterator<Item = char>,
     mut out: impl FnMut(Token<'arn>, Span),
-    ctx: &mut Ctx<'arn>,
+    ctx: &Ctx<'arn>,
 ) {
     let mut s = c.to_string();
     let mut to = from.after(c);
@@ -432,7 +432,7 @@ fn lex_digit<'arn>(
     from: Pos,
     mut ins: impl Iterator<Item = char>,
     mut out: impl FnMut(Token<'arn>, Span),
-    ctx: &mut Ctx<'arn>,
+    ctx: &Ctx<'arn>,
 ) {
     let mut s = c.to_string();
     let mut to = from.right();
@@ -461,7 +461,7 @@ fn lex_alphabet<'arn>(
     from: Pos,
     mut ins: impl Iterator<Item = char>,
     mut out: impl FnMut(Token<'arn>, Span),
-    ctx: &mut Ctx<'arn>,
+    ctx: &Ctx<'arn>,
 ) {
     let mut s = c.to_string();
     let mut to = from.right();
@@ -485,7 +485,7 @@ fn lex_alphabet<'arn>(
 }
 
 /// Gets the token for the name.
-fn name_token<'arn>(s: String, ctx: &mut Ctx<'arn>) -> Token<'arn> {
+fn name_token<'arn>(s: String, ctx: &Ctx<'arn>) -> Token<'arn> {
     match s.as_str() {
         "fn" => Fn,
         "let" => Let,
@@ -502,17 +502,17 @@ mod tests {
     /// Template for testing
     fn test_lex(
         text: &str,
-        get_want: impl for<'arn> FnOnce(&mut Ctx<'arn>) -> Vec<(Token<'arn>, Span)>,
+        get_want: impl for<'arn> FnOnce(&Ctx<'arn>) -> Vec<(Token<'arn>, Span)>,
     ) {
         let arena = Bump::new();
-        let mut ctx = Ctx::new(&arena);
+        let ctx = Ctx::new(&arena);
         let mut res = Vec::new();
         let out = |tok, span| match tok {
             Whitespace(_) => {}
             _ => res.push((tok, span)),
         };
-        lex(pos(0, 0), text.chars(), out, &mut ctx);
-        let want = get_want(&mut ctx);
+        lex(pos(0, 0), text.chars(), out, &ctx);
+        let want = get_want(&ctx);
         for (ts, want_ts) in res.iter().zip(want.iter()) {
             assert_eq!(ts, want_ts);
         }
