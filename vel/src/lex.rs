@@ -496,7 +496,7 @@ fn name_token<'arn>(s: String, ctx: &Ctx<'arn>) -> Token<'arn> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::pos::pos;
+    use crate::{span, util::pos::pos};
     use bumpalo::Bump;
 
     /// Template for testing
@@ -534,36 +534,33 @@ fn let
 \ ♡",
             |ctx| {
                 vec![
-                    (LParen, span(pos(1, 0), pos(1, 1))),
-                    (RParen, span(pos(1, 1), pos(1, 2))),
-                    (LBrack, span(pos(1, 3), pos(1, 4))),
-                    (RBrack, span(pos(1, 4), pos(1, 5))),
-                    (LCurly, span(pos(1, 6), pos(1, 7))),
-                    (RCurly, span(pos(1, 7), pos(1, 8))),
-                    (
-                        LineComment(ctx.intern_str(" xxx\n")),
-                        span(pos(1, 9), pos(2, 0)),
-                    ),
-                    (Eq, span(pos(2, 0), pos(2, 1))),
-                    (Eq2, span(pos(2, 2), pos(2, 4))),
-                    (Ne, span(pos(2, 5), pos(2, 7))),
-                    (Ast, span(pos(2, 8), pos(2, 9))),
-                    (And, span(pos(3, 0), pos(3, 2))),
-                    (Or, span(pos(3, 3), pos(3, 5))),
-                    (Not, span(pos(3, 6), pos(3, 7))),
-                    (Lt, span(pos(4, 0), pos(4, 1))),
-                    (Le, span(pos(4, 2), pos(4, 4))),
-                    (Gt, span(pos(4, 5), pos(4, 6))),
-                    (Ge, span(pos(4, 7), pos(4, 9))),
-                    (Plus, span(pos(5, 0), pos(5, 1))),
-                    (Minus, span(pos(5, 2), pos(5, 3))),
-                    (Div, span(pos(5, 4), pos(5, 5))),
-                    (Fn, span(pos(6, 0), pos(6, 2))),
-                    (Let, span(pos(6, 3), pos(6, 6))),
-                    (Number(ctx.intern_str("123")), span(pos(7, 0), pos(7, 3))),
-                    (Ident(ctx.intern_str("abcde")), span(pos(7, 4), pos(7, 9))),
-                    (ErrorBackslash, span(pos(8, 0), pos(8, 1))),
-                    (ErrorInvalidChar('♡'), span(pos(8, 2), pos(8, 3))),
+                    (LParen, span!((1, 0)..(1, 1))),
+                    (RParen, span!((1, 1)..(1, 2))),
+                    (LBrack, span!((1, 3)..(1, 4))),
+                    (RBrack, span!((1, 4)..(1, 5))),
+                    (LCurly, span!((1, 6)..(1, 7))),
+                    (RCurly, span!((1, 7)..(1, 8))),
+                    (LineComment(ctx.intern_str(" xxx\n")), span!((1, 9)..(2, 0))),
+                    (Eq, span!((2, 0)..(2, 1))),
+                    (Eq2, span!((2, 2)..(2, 4))),
+                    (Ne, span!((2, 5)..(2, 7))),
+                    (Ast, span!((2, 8)..(2, 9))),
+                    (And, span!((3, 0)..(3, 2))),
+                    (Or, span!((3, 3)..(3, 5))),
+                    (Not, span!((3, 6)..(3, 7))),
+                    (Lt, span!((4, 0)..(4, 1))),
+                    (Le, span!((4, 2)..(4, 4))),
+                    (Gt, span!((4, 5)..(4, 6))),
+                    (Ge, span!((4, 7)..(4, 9))),
+                    (Plus, span!((5, 0)..(5, 1))),
+                    (Minus, span!((5, 2)..(5, 3))),
+                    (Div, span!((5, 4)..(5, 5))),
+                    (Fn, span!((6, 0)..(6, 2))),
+                    (Let, span!((6, 3)..(6, 6))),
+                    (Number(ctx.intern_str("123")), span!((7, 0)..(7, 3))),
+                    (Ident(ctx.intern_str("abcde")), span!((7, 4)..(7, 9))),
+                    (ErrorBackslash, span!((8, 0)..(8, 1))),
+                    (ErrorInvalidChar('♡'), span!((8, 2)..(8, 3))),
                 ]
             },
         );
@@ -574,8 +571,8 @@ fn let
     fn test_lex_ident() {
         test_lex("ab1_cde 漢字", |ctx| {
             vec![
-                (Ident(ctx.intern_str("ab1_cde")), span(pos(0, 0), pos(0, 7))),
-                (Ident(ctx.intern_str("漢字")), span(pos(0, 8), pos(0, 10))),
+                (Ident(ctx.intern_str("ab1_cde")), span!((0, 0)..(0, 7))),
+                (Ident(ctx.intern_str("漢字")), span!((0, 8)..(0, 10))),
             ]
         })
     }
@@ -585,12 +582,9 @@ fn let
     fn test_lex_number() {
         test_lex("0 123 1_234_567", |ctx| {
             vec![
-                (Number(ctx.intern_str("0")), span(pos(0, 0), pos(0, 1))),
-                (Number(ctx.intern_str("123")), span(pos(0, 2), pos(0, 5))),
-                (
-                    Number(ctx.intern_str("1_234_567")),
-                    span(pos(0, 6), pos(0, 15)),
-                ),
+                (Number(ctx.intern_str("0")), span!((0, 0)..(0, 1))),
+                (Number(ctx.intern_str("123")), span!((0, 2)..(0, 5))),
+                (Number(ctx.intern_str("1_234_567")), span!((0, 6)..(0, 15))),
             ]
         })
     }

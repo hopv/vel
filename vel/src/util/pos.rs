@@ -71,3 +71,11 @@ impl Display for Span {
 pub fn span(from: Pos, to: Pos) -> Span {
     Span { from, to }
 }
+
+/// Utility for making a span.
+#[macro_export]
+macro_rules! span {
+    (($from_line:expr , $from_col:expr) .. ($to_line:expr , $to_col:expr)) => {
+        span(pos($from_line, $from_col), pos($to_line, $to_col))
+    };
+}
