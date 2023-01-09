@@ -1,4 +1,4 @@
-# Vel 
+# Vel
 
 <p><img src="./logo/logo.svg" height="70" alt="Vel's logo" /></p>
 
@@ -28,5 +28,4 @@ We can also use Rust-like borrows for sharing, very unlike traditional separatio
 
 ## Architecture
 
-Vel's ecosystem ([vel](./vel)) is all written in Rust, 
-for smooth development and great runtime performance.
+- [`vel`](./vel): Vel's language engine, written in Rust.
