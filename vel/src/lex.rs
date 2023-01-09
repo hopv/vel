@@ -15,7 +15,7 @@ use CharOrEof::*;
 
 impl Display for CharOrEof {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
+        match *self {
             Char(c) => write!(f, "{}", c),
             Eof => write!(f, "EOF"),
         }
@@ -84,23 +84,31 @@ pub enum Token<'arn> {
     /// Whitespace
     Ws(Intern<'arn, str>),
 
+    /// Empty binary number
+    EmptyBinNum(Intern<'arn, str>),
+    /// Empty hexadecimal number
+    EmptyHexNum(Intern<'arn, str>),
     /// Stray `&`
     StrayAmp(CharOrEof),
     /// Stray `|`
     StrayBar(CharOrEof),
-    /// Stray character
+    /// Invalid character
     InvalidChar(char),
 }
 use Token::*;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 /// Vel lexing error.
-pub enum LexError {
+pub enum LexError<'arn> {
+    /// Empty binary number
+    EEmptyBinNum(Intern<'arn, str>),
+    /// Empty hexadecimal number
+    EEmptyHexNum(Intern<'arn, str>),
     /// Stray `&`
     EStrayAmp(CharOrEof),
-    /// `|`
+    /// Stray `|`
     EStrayBar(CharOrEof),
-    /// Character
+    /// Invalid character
     EInvalidChar(char),
 }
 use LexError::*;
@@ -137,6 +145,8 @@ impl Display for Token<'_> {
             Comment(s) => write!(f, "//{}", s),
             Ws(s) => write!(f, "{}", s),
 
+            EmptyBinNum(s) => write!(f, "0b{}", s),
+            EmptyHexNum(s) => write!(f, "0x{}", s),
             StrayAmp(_) => write!(f, "&"),
             StrayBar(_) => write!(f, "|"),
             InvalidChar(c) => write!(f, "{}", c),
@@ -144,10 +154,12 @@ impl Display for Token<'_> {
     }
 }
 
-impl Token<'_> {
+impl<'arn> Token<'arn> {
     /// Turns a token possibly into a lex error
-    pub fn as_error(self) -> Option<LexError> {
+    pub fn as_error(self) -> Option<LexError<'arn>> {
         match self {
+            EmptyBinNum(s) => Some(EEmptyBinNum(s)),
+            EmptyHexNum(s) => Some(EEmptyHexNum(s)),
             StrayAmp(ce) => Some(EStrayAmp(ce)),
             StrayBar(ce) => Some(EStrayBar(ce)),
             InvalidChar(c) => Some(EInvalidChar(c)),
@@ -156,12 +168,14 @@ impl Token<'_> {
     }
 }
 
-impl Display for LexError {
+impl Display for LexError<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match *self {
-            EStrayAmp(ce) => write!(f, "{} was found after &, but only & is allowed", ce),
-            EStrayBar(ce) => write!(f, "{} was found after |, but only | is allowed", ce),
-            EInvalidChar(c) => write!(f, "Invalid character: {}", c),
+            EEmptyBinNum(s) => write!(f, "Empty binary number 0b{}", s),
+            EEmptyHexNum(s) => write!(f, "Empty hexadecimal number 0x{}", s),
+            EStrayAmp(ce) => write!(f, "& found stray before: {}", ce),
+            EStrayBar(ce) => write!(f, "| found stray before: {}", ce),
+            EInvalidChar(c) => write!(f, "Invalid character {}", c),
         }
     }
 }
@@ -266,7 +280,7 @@ impl<'ctx, 'arn, I: Iterator<Item = char>, O: FnMut(Token<'arn>, Span)> LexState
             // Starting with zero
             '0' => return self.lex_zero(from),
             // Number, starting with a nonzero digit, `1`-`9`
-            '1'..='9' => return self.lex_num(c, from),
+            '1'..='9' => return self.lex_nonzero(c, from),
             // Name, starting with '_' or an alphabet character
             '_' => return self.lex_name(c, from),
             _ if c.is_alphabetic() => return self.lex_name(c, from),
@@ -440,59 +454,85 @@ impl<'ctx, 'arn, I: Iterator<Item = char>, O: FnMut(Token<'arn>, Span)> LexState
     /// Lexes, starting with zero.
     fn lex_zero(mut self, from: Pos) {
         let zero_to = self.pos;
-        let ce = match self.inc() {
-            Eof => Eof,
+        let (s, ce, to) = match self.inc() {
+            Eof => (self.str("0"), Eof, zero_to),
             Char(c) => match c {
                 // Binary number, starting with `0b`
                 'b' => return self.lex_bin_num(from),
                 // Hexadecimal number, starting with `0x`
                 'x' => return self.lex_hex_num(from),
-                _ => Char(c),
+                '_' | '0'..='9' => {
+                    let mut s = format!("0{}", c);
+                    loop {
+                        let to = self.pos;
+                        match self.inc() {
+                            Eof => break (self.str(&s), Eof, to),
+                            Char(c) => match c {
+                                '_' | '0'..='9' => s.push(c),
+                                _ => break (self.str(&s), Char(c), to),
+                            },
+                        }
+                    }
+                }
+                _ => (self.str("0"), Char(c), zero_to),
             },
         };
-        // `0`
-        self.out(Num(self.str("0")), span(from, zero_to));
-        return self.lex_may_any(ce, zero_to);
+        self.out(Num(s), span(from, to));
+        return self.lex_may_any(ce, to);
     }
 
     /// Lexes a binary number, starting with `0b`.
     fn lex_bin_num(mut self, from: Pos) {
         let mut s = String::new();
+        let mut has_digit = false;
         let (ce, to) = loop {
             let to = self.pos;
             match self.inc() {
                 Eof => break (Eof, to),
                 Char(c) => match c {
                     // Continues for `_` or a digit `0`/`1`.
-                    '_' | '0' | '1' => s.push(c),
+                    '_' => s.push(c),
+                    '0' | '1' => {
+                        has_digit = true;
+                        s.push(c);
+                    }
                     _ => break (Char(c), to),
                 },
             }
         };
-        self.out(BinNum(self.str(&s)), span(from, to));
+        let s = self.str(&s);
+        let tok = if has_digit { BinNum(s) } else { EmptyBinNum(s) };
+        self.out(tok, span(from, to));
         return self.lex_may_any(ce, to);
     }
 
     /// Lexes a hexadecimal number, starting with `0x`.
     fn lex_hex_num(mut self, from: Pos) {
         let mut s = String::new();
+        let mut has_digit = false;
         let (ce, to) = loop {
             let to = self.pos;
             match self.inc() {
                 Eof => break (Eof, to),
                 Char(c) => match c {
-                    // Continues for `_` or a digit `0`-`9`, `a`-`f`.
-                    '_' | '0'..='9' | 'a'..='f' => s.push(c),
+                    // Continues for `_` or a digit `0`-`9`, `a`-`f`, `A`-`F`.
+                    '_' => s.push(c),
+                    '0'..='9' | 'a'..='f' | 'A'..='F' => {
+                        has_digit = true;
+                        s.push(c);
+                    }
                     _ => break (Char(c), to),
                 },
             }
         };
-        self.out(HexNum(self.str(&s)), span(from, to));
+        let s = self.str(&s);
+        let tok = if has_digit { HexNum(s) } else { EmptyHexNum(s) };
+        self.out(tok, span(from, to));
         return self.lex_may_any(ce, to);
     }
 
-    /// Lexes a number, starting with a digit `1`-`9`.
-    fn lex_num(mut self, c: char, from: Pos) {
+    /// Lexes a number, starting with a nonzero digit `1`-`9`.
+    fn lex_nonzero(mut self, c: char, from: Pos) {
         let mut s = c.to_string();
         let (ce, to) = loop {
             let to = self.pos;
@@ -564,8 +604,7 @@ mod tests {
     use std::fmt::Write;
 
     /// Big code containing all kinds of tokens
-    const BIG: &str = r"
-() [] {} // xxx
+    const BIG: &str = r"() [] {} // xxx
 = == ~= *
 && || ~
 < <= > >=
@@ -573,6 +612,7 @@ mod tests {
 fn let
 123 0b01 0xa0f
 abcde
+0b__ 0x__
 & | ♡";
 
     /// Tests that lexing and displaying code retrieves the original code.
@@ -610,33 +650,35 @@ abcde
     fn test_lex_all() {
         test_lex(BIG, |ctx| {
             vec![
-                (LParen, span!((1, 0)..(1, 1))),
-                (RParen, span!((1, 1)..(1, 2))),
-                (LBrack, span!((1, 3)..(1, 4))),
-                (RBrack, span!((1, 4)..(1, 5))),
-                (LCurly, span!((1, 6)..(1, 7))),
-                (RCurly, span!((1, 7)..(1, 8))),
-                (Comment(ctx.str(" xxx\n")), span!((1, 9)..(2, 0))),
-                (Eq, span!((2, 0)..(2, 1))),
-                (Eq2, span!((2, 2)..(2, 4))),
-                (Neq, span!((2, 5)..(2, 7))),
-                (Ast, span!((2, 8)..(2, 9))),
-                (And, span!((3, 0)..(3, 2))),
-                (Or, span!((3, 3)..(3, 5))),
-                (Not, span!((3, 6)..(3, 7))),
-                (Lt, span!((4, 0)..(4, 1))),
-                (Leq, span!((4, 2)..(4, 4))),
-                (Gt, span!((4, 5)..(4, 6))),
-                (Geq, span!((4, 7)..(4, 9))),
-                (Plus, span!((5, 0)..(5, 1))),
-                (Minus, span!((5, 2)..(5, 3))),
-                (Div, span!((5, 4)..(5, 5))),
-                (Fn, span!((6, 0)..(6, 2))),
-                (Let, span!((6, 3)..(6, 6))),
-                (Num(ctx.str("123")), span!((7, 0)..(7, 3))),
-                (BinNum(ctx.str("01")), span!((7, 4)..(7, 8))),
-                (HexNum(ctx.str("a0f")), span!((7, 9)..(7, 14))),
-                (Ident(ctx.str("abcde")), span!((8, 0)..(8, 5))),
+                (LParen, span!((0, 0)..(0, 1))),
+                (RParen, span!((0, 1)..(0, 2))),
+                (LBrack, span!((0, 3)..(0, 4))),
+                (RBrack, span!((0, 4)..(0, 5))),
+                (LCurly, span!((0, 6)..(0, 7))),
+                (RCurly, span!((0, 7)..(0, 8))),
+                (Comment(ctx.str(" xxx\n")), span!((0, 9)..(1, 0))),
+                (Eq, span!((1, 0)..(1, 1))),
+                (Eq2, span!((1, 2)..(1, 4))),
+                (Neq, span!((1, 5)..(1, 7))),
+                (Ast, span!((1, 8)..(1, 9))),
+                (And, span!((2, 0)..(2, 2))),
+                (Or, span!((2, 3)..(2, 5))),
+                (Not, span!((2, 6)..(2, 7))),
+                (Lt, span!((3, 0)..(3, 1))),
+                (Leq, span!((3, 2)..(3, 4))),
+                (Gt, span!((3, 5)..(3, 6))),
+                (Geq, span!((3, 7)..(3, 9))),
+                (Plus, span!((4, 0)..(4, 1))),
+                (Minus, span!((4, 2)..(4, 3))),
+                (Div, span!((4, 4)..(4, 5))),
+                (Fn, span!((5, 0)..(5, 2))),
+                (Let, span!((5, 3)..(5, 6))),
+                (Num(ctx.str("123")), span!((6, 0)..(6, 3))),
+                (BinNum(ctx.str("01")), span!((6, 4)..(6, 8))),
+                (HexNum(ctx.str("a0f")), span!((6, 9)..(6, 14))),
+                (Ident(ctx.str("abcde")), span!((7, 0)..(7, 5))),
+                (EmptyBinNum(ctx.str("__")), span!((8, 0)..(8, 4))),
+                (EmptyHexNum(ctx.str("__")), span!((8, 5)..(8, 9))),
                 (StrayAmp(Char(' ')), span!((9, 0)..(9, 1))),
                 (StrayBar(Char(' ')), span!((9, 2)..(9, 3))),
                 (InvalidChar('♡'), span!((9, 4)..(9, 5))),
@@ -659,15 +701,16 @@ abcde
     #[test]
     fn test_lex_number() {
         test_lex(
-            r"0 1_234_567
+            r"0 0_123 1_234_567
 0b0101_1010
-0xab_01_ef",
+0xab_01_EF",
             |ctx| {
                 vec![
                     (Num(ctx.str("0")), span!((0, 0)..(0, 1))),
-                    (Num(ctx.str("1_234_567")), span!((0, 2)..(0, 11))),
+                    (Num(ctx.str("0_123")), span!((0, 2)..(0, 7))),
+                    (Num(ctx.str("1_234_567")), span!((0, 8)..(0, 17))),
                     (BinNum(ctx.str("0101_1010")), span!((1, 0)..(1, 11))),
-                    (HexNum(ctx.str("ab_01_ef")), span!((2, 0)..(2, 10))),
+                    (HexNum(ctx.str("ab_01_EF")), span!((2, 0)..(2, 10))),
                 ]
             },
         )
