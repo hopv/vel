@@ -1,4 +1,3 @@
-use bumpalo::Bump;
 use std::cell::UnsafeCell;
 use std::fmt::{Debug, Display};
 use std::{collections::hash_map::HashMap, hash::Hash};
@@ -80,8 +79,6 @@ impl<T: ?Sized> std::ops::Deref for Intern<'_, T> {
 
 /// Interns objects of a sized type `T`.
 pub struct Interner<'arn, T> {
-    /// Arena.
-    arena: &'arn Bump,
     /// Memoization table.
     memo: UnsafeCell<HashMap<T, Intern<'arn, T>>>,
 }
@@ -89,27 +86,24 @@ pub struct Interner<'arn, T> {
 impl<'arn, T: Eq + Hash + Clone> Interner<'arn, T> {
     /// Creates a new interner.
     #[inline]
-    pub fn new(arena: &'arn Bump) -> Self {
+    pub fn new() -> Self {
         Self {
-            arena,
             memo: UnsafeCell::new(HashMap::new()),
         }
     }
 
     /// Interns an object.
-    pub fn intern(&self, obj: T) -> Intern<'arn, T> {
+    pub fn intern(&self, obj: T, alloc: impl FnOnce(T) -> &'arn T) -> Intern<'arn, T> {
         // This is safe because only a shared reference is finally returned.
         let memo = unsafe { &mut *self.memo.get() };
-        *memo.entry(obj.clone()).or_insert_with(|| Intern {
-            body: self.arena.alloc(obj),
-        })
+        *memo
+            .entry(obj.clone())
+            .or_insert_with(|| Intern { body: alloc(obj) })
     }
 }
 
 /// Interns strings.
 pub struct StrInterner<'arn> {
-    /// Arena.
-    arena: &'arn Bump,
     /// Memoization table.
     memo: UnsafeCell<HashMap<String, Intern<'arn, str>>>,
 }
@@ -117,19 +111,18 @@ pub struct StrInterner<'arn> {
 impl<'arn> StrInterner<'arn> {
     /// Creates a new interner.
     #[inline]
-    pub fn new(arena: &'arn Bump) -> Self {
+    pub fn new() -> Self {
         Self {
-            arena,
             memo: UnsafeCell::new(HashMap::new()),
         }
     }
 
     /// Interns a string.
-    pub fn intern(&self, s: &str) -> Intern<'arn, str> {
+    pub fn intern(&self, s: &str, alloc: impl FnOnce(&str) -> &'arn str) -> Intern<'arn, str> {
         // This is safe because only a shared reference is finally returned.
         let memo = unsafe { &mut *self.memo.get() };
-        *memo.entry(s.to_string()).or_insert_with(|| Intern {
-            body: self.arena.alloc_str(s),
-        })
+        *memo
+            .entry(s.to_string())
+            .or_insert_with(|| Intern { body: alloc(s) })
     }
 }
