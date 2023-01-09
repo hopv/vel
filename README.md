@@ -29,3 +29,4 @@ We can also use Rust-like borrows for sharing, very unlike traditional separatio
 ## Architecture
 
 - [`vel`](./vel): Vel's language engine, written in Rust.
+- [`vel-vscode`](./vel-vscode): VS Code extension for Vel.

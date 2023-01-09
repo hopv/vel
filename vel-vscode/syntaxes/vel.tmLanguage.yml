@@ -1,0 +1,20 @@
+# Vel's TextMate grammar file
+# Transpiled into vel.tmLanguage.json
+
+$schema: https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json
+name: Vel
+scopeName: source.vel
+patterns:
+  - name: comment.line.double-slash.vel
+    match: //.*$
+  - name: keyword.operator.vel
+    match: # =, ==, ~=, *, &&, ||, ~, <, <=, >, >=, +, -, /
+      (=|==|\~=|\*|&&|\|\||\~|<|<=|>|>=|\+|-|/)
+  - name: keyword.control.vel
+    match: \b(fn|let)\b
+  - name: constant.numeric.integer.decimal.vel
+    match: \b[0-9][0-9_]*\b
+  - name: constant.numeric.integer.binary.vel
+    match: \b0b_*[01][01_]*\b
+  - name: constant.numeric.integer.hexadecimal.vel
+    match: \b0x_*[0-9a-fA-F][0-9a-fA-F_]*\b

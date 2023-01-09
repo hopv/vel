@@ -1,0 +1,43 @@
+{
+  "name": "vel",
+  "displayName": "Vel",
+  "description": "VS Code extension for Vel",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hopv/vel",
+  },
+  "author": {
+    "name": "Yusuke Matsushita",
+    "email": "ysk.m24t@gmail.com",
+    "url": "https://github.com/shiatsumat"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "vel",
+        "aliases": [
+          "Vel",
+          "vel"
+        ],
+        "extensions": [
+          ".vl"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "vel",
+        "scopeName": "source.vel",
+        "path": "./syntaxes/vel.tmLanguage.json"
+      }
+    ]
+  }
+}
