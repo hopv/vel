@@ -21,6 +21,6 @@ impl<'arn> Ctx<'arn> {
     /// Interns a string.
     #[inline]
     pub fn str(&self, s: &str) -> Intern<'arn, str> {
-        self.str_interner.intern(s, |s| self.arena.alloc_str(s))
+        self.str_interner.intern(s, self.arena)
     }
 }

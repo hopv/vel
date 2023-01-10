@@ -1,16 +1,24 @@
+use bumpalo::Bump;
 use std::cell::UnsafeCell;
 use std::fmt::{Debug, Display};
 use std::{collections::hash_map::HashMap, hash::Hash};
 
 /// Intern, wrapping `&'arn T`.
 ///
+/// Created by `Interner::intern`.
+///
+/// Allows *O*(1) equality check, ensured to agree with the object equality,
+/// as long as both operand interns come from the same interner.
+///
 /// `T` can be `?Sized` (e.g., `str`).
+#[derive(Debug)]
 pub struct Intern<'arn, T: ?Sized> {
-    /// Private body.
-    body: &'arn T,
+    /// Id, given deterministically in the order of registration.
+    id: usize,
+    /// Reference to the object.
+    obj: &'arn T,
 }
 
-/// Mysteriously, `#[derive(Copy, Clone)]` doesn't work.
 impl<'arn, T: ?Sized> Copy for Intern<'arn, T> {}
 impl<'arn, T: ?Sized> Clone for Intern<'arn, T> {
     #[inline]
@@ -19,32 +27,19 @@ impl<'arn, T: ?Sized> Clone for Intern<'arn, T> {
     }
 }
 
-impl<'arn, T: ?Sized> Intern<'arn, T> {
-    /// Turns into a raw pointer.
-    #[inline]
-    pub fn raw(&self) -> *const T {
-        self.body
-    }
-}
-
-impl<T: ?Sized + Debug> Debug for Intern<'_, T> {
-    /// Debug outputs the pointer's address.
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Intern({:?}: {:?})", self.raw(), self.body)
-    }
-}
-
 impl<T: ?Sized + Display> Display for Intern<'_, T> {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.body.fmt(f)
+        self.obj.fmt(f)
     }
 }
 
+/// O(1) equality check, ensured to agree with the object equality,
+/// as long as both operand interns come from the same interner.
 impl<T: ?Sized> PartialEq for Intern<'_, T> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.raw() == other.raw()
+        self.id == other.id
     }
 }
 impl<T: ?Sized> Eq for Intern<'_, T> {}
@@ -52,20 +47,20 @@ impl<T: ?Sized> Eq for Intern<'_, T> {}
 impl<T: ?Sized> Hash for Intern<'_, T> {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.raw().hash(state)
+        self.id.hash(state)
     }
 }
 
 impl<T: ?Sized> PartialOrd for Intern<'_, T> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.raw().partial_cmp(&other.raw())
+        self.id.partial_cmp(&other.id)
     }
 }
 impl<T: ?Sized> Ord for Intern<'_, T> {
     #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.raw().cmp(&other.raw())
+        self.id.cmp(&other.id)
     }
 }
 
@@ -73,17 +68,17 @@ impl<T: ?Sized> std::ops::Deref for Intern<'_, T> {
     type Target = T;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        self.body
+        self.obj
     }
 }
 
 /// Interns objects of a sized type `T`.
 pub struct Interner<'arn, T> {
     /// Memoization table.
-    memo: UnsafeCell<HashMap<T, Intern<'arn, T>>>,
+    memo: UnsafeCell<HashMap<&'arn T, usize>>,
 }
 
-impl<'arn, T: Eq + Hash + Clone> Interner<'arn, T> {
+impl<'arn, T: Clone + Eq + Hash> Interner<'arn, T> {
     /// Creates a new interner.
     #[inline]
     pub fn new() -> Self {
@@ -93,19 +88,27 @@ impl<'arn, T: Eq + Hash + Clone> Interner<'arn, T> {
     }
 
     /// Interns an object.
-    pub fn intern(&self, obj: T, alloc: impl FnOnce(T) -> &'arn T) -> Intern<'arn, T> {
-        // This is safe because only a shared reference is finally returned.
-        let memo = unsafe { &mut *self.memo.get() };
-        *memo
-            .entry(obj.clone())
-            .or_insert_with(|| Intern { body: alloc(obj) })
+    ///
+    /// This is safe as long as `T::clone`, `T::eq` and `T::hash`
+    /// don't perform `self.intern`, which is almost always the case.
+    pub unsafe fn intern(&self, o: &T, arena: &'arn Bump) -> Intern<'arn, T> {
+        let memo = &mut *self.memo.get();
+        match memo.get_key_value(o) {
+            Some((obj, &id)) => Intern { id, obj },
+            None => {
+                let id = memo.len();
+                let obj = arena.alloc_with(|| o.clone());
+                memo.insert(obj, id);
+                Intern { id, obj }
+            }
+        }
     }
 }
 
 /// Interns strings.
 pub struct StrInterner<'arn> {
     /// Memoization table.
-    memo: UnsafeCell<HashMap<String, Intern<'arn, str>>>,
+    memo: UnsafeCell<HashMap<&'arn str, usize>>,
 }
 
 impl<'arn> StrInterner<'arn> {
@@ -118,11 +121,17 @@ impl<'arn> StrInterner<'arn> {
     }
 
     /// Interns a string.
-    pub fn intern(&self, s: &str, alloc: impl FnOnce(&str) -> &'arn str) -> Intern<'arn, str> {
-        // This is safe because only a shared reference is finally returned.
+    pub fn intern(&self, s: &str, arena: &'arn Bump) -> Intern<'arn, str> {
         let memo = unsafe { &mut *self.memo.get() };
-        *memo
-            .entry(s.to_string())
-            .or_insert_with(|| Intern { body: alloc(s) })
+        // This mutation of memo is safe because only &str is used.
+        match memo.get_key_value(s) {
+            Some((obj, id)) => Intern { id: *id, obj },
+            None => {
+                let id = memo.len();
+                let obj = arena.alloc_str(s);
+                memo.insert(obj, id);
+                Intern { id, obj }
+            }
+        }
     }
 }
