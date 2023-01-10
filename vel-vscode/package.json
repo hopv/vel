@@ -1,22 +1,23 @@
 {
   "name": "vel",
   "displayName": "Vel",
-  "description": "VS Code extension for Vel",
   "version": "0.0.1",
-  "engines": {
-    "vscode": "^1.74.0"
-  },
+  "description": "VS Code extension for Vel",
   "categories": [
     "Programming Languages"
   ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/hopv/vel"
-  },
+  "publisher": "shiatsumat",
   "author": {
     "name": "Yusuke Matsushita",
     "email": "ysk.m24t@gmail.com",
     "url": "https://github.com/shiatsumat"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hopv/vel"
+  },
+  "engines": {
+    "vscode": "^1.74.0"
   },
   "contributes": {
     "languages": [

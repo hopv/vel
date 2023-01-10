@@ -1,17 +1,17 @@
-.PHONY: all vsix code
+.PHONY: all create-vsix install-to-code
 
 veltm = syntaxes/vel.tmLanguage
 
-all: code
+all: install-to-code
 
 # Generate Vel's JSON grammer file from YAML
 $(veltm).json: $(veltm).yml
 	yq -o=j '.' $(veltm).yml > $(veltm).json
 
-# Generate Vel's VSIX package
-vsix: $(veltm).json
+# Create Vel's VSIX package
+create-vsix: $(veltm).json
 	vsce package
 
 # Install Vel's VSIX package in VS Code
-code: vsix
-	code --install-extension *.vsix
+install-to-code: create-vsix
+	code --install-extension vel-*.vsix
