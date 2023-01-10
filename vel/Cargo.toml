@@ -1,7 +1,12 @@
 [package]
 name = "vel"
-version = "0.1.0"
+version = "0.0.1"
+authors = ["Yusuke Matsushita"]
+description = "Vel's language engine"
+repository = "https://github.com/hopv/vel"
+license = "MIT"
 edition = "2021"
+publish = false
 
 [dependencies]
 bumpalo = "3.11.1"
