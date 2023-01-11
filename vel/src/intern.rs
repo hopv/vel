@@ -10,20 +10,12 @@ use std::{collections::hash_map::HashMap, hash::Hash};
 /// as long as both operand interns come from the same interner.
 ///
 /// `T` can be `?Sized` (e.g., `str`).
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Intern<'arn, T: ?Sized> {
     /// Id, given deterministically in the order of registration.
     id: usize,
     /// Reference to the object.
     obj: &'arn T,
-}
-
-impl<'arn, T: ?Sized> Copy for Intern<'arn, T> {}
-impl<'arn, T: ?Sized> Clone for Intern<'arn, T> {
-    #[inline]
-    fn clone(&self) -> Self {
-        *self
-    }
 }
 
 impl<T: ?Sized + Display> Display for Intern<'_, T> {

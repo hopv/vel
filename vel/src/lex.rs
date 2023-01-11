@@ -2,12 +2,12 @@ use crate::util::arena::{AString, AStringExt, Arena, ArenaExt};
 use crate::util::pos::{span, Pos, Span};
 use std::fmt::{Display, Formatter, Result};
 
-/// A character or EOF
+/// A character or EOF.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum CharOrEof {
-    /// Character
+    /// Character.
     Char(char),
-    /// EOF, or the end of the input stream
+    /// EOF, or the end of the input stream.
     Eof,
 }
 use CharOrEof::*;
@@ -26,79 +26,79 @@ impl Display for CharOrEof {
 /// Has the information to retrieve the original source code.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum Token<'arn> {
-    /// `(`
+    /// `(`.
     LParen,
-    /// `)`
+    /// `)`.
     RParen,
-    /// `[`
+    /// `[`.
     LBrack,
-    /// `]`
+    /// `]`.
     RBrack,
-    /// `{`
+    /// `{`.
     LCurly,
-    /// `}`
+    /// `}`.
     RCurly,
-    /// `=`
+    /// `=`.
     Eq,
-    /// `==`
+    /// `==`.
     Eq2,
-    /// `~=`
+    /// `~=`.
     Neq,
-    /// `*`
+    /// `*`.
     Ast,
-    /// `&&`
+    /// `&&`.
     And,
-    /// `||`
+    /// `||`.
     Or,
-    /// `~`
+    /// `~`.
     Not,
-    /// `<`
+    /// `<`.
     Lt,
-    /// `<=`
+    /// `<=`.
     Leq,
-    /// `>`
+    /// `>`.
     Gt,
-    /// `>=`
+    /// `>=`.
     Geq,
-    /// `+`
+    /// `+`.
     Plus,
-    /// `-`
+    /// `-`.
     Minus,
-    /// `/`
+    /// `/`.
     Div,
-    /// `fn`
+    /// `fn`.
     Fn,
-    /// `let`
+    /// `let`.
     Let,
-    /// Number
+    /// Number.
     Num(&'arn str),
-    /// Binary number
+    /// Binary number.
     BinNum(&'arn str),
-    /// Hexadecimal number
+    /// Hexadecimal number.
     HexNum(&'arn str),
-    /// Identifier
+    /// Identifier.
     Ident(&'arn str),
-    /// Line comment, `//...`
+    /// Line comment, `//...`.
     Comment(&'arn str),
-    /// Whitespace
+    /// Whitespace.
     Ws(&'arn str),
-    /// Error token
+    /// Error token.
     ErrTok(LexError<'arn>),
 }
 use Token::*;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 /// Vel lexing error.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum LexError<'arn> {
-    /// Empty binary number
+    /// Empty binary number.
     EmptyBinNum(&'arn str),
-    /// Empty hexadecimal number
+    /// Empty hexadecimal number.
     EmptyHexNum(&'arn str),
-    /// Stray `&`
+    /// Stray `&`.
     StrayAmp(CharOrEof),
-    /// Stray `|`
+    /// Stray `|`.
     StrayBar(CharOrEof),
-    /// Invalid character
+    /// Invalid character.
     InvalidChar(char),
 }
 use LexError::*;
@@ -171,24 +171,24 @@ pub fn lex<'arn>(
 
 /// State of a lexer.
 struct LexState<'arn, I, O> {
-    /// Position
+    /// Position.
     pos: Pos,
-    /// Input
+    /// Input.
     ins: I,
-    /// Output
+    /// Output.
     out: O,
-    /// Arena
+    /// Arena.
     arn: &'arn Arena,
 }
 
 impl<'ctx, 'arn, I: Iterator<Item = char>, O: FnMut(Token<'arn>, Span)> LexState<'arn, I, O> {
-    /// Create a lex state
+    /// Creates a lex state.
     #[inline]
     fn new(pos: Pos, ins: I, out: O, arn: &'arn Arena) -> Self {
         Self { pos, ins, out, arn }
     }
 
-    /// Input one character
+    /// Inputs one character.
     #[inline]
     fn inc(&mut self) -> CharOrEof {
         match self.ins.next() {
@@ -200,18 +200,18 @@ impl<'ctx, 'arn, I: Iterator<Item = char>, O: FnMut(Token<'arn>, Span)> LexState
         }
     }
 
-    /// Output a token and a span
+    /// Outputs a token and a span.
     #[inline]
     fn out(&mut self, tok: Token<'arn>, span: Span) {
         (self.out)(tok, span);
     }
 
-    /// New `AString`
+    /// Creates a new `AString`.
     fn new_astring(&self) -> AString<'arn> {
         self.arn.new_astring()
     }
 
-    /// Lexes, without the head character
+    /// Lexes, without the head character.
     #[inline]
     fn lex(mut self) {
         let from = self.pos;
@@ -329,9 +329,8 @@ impl<'ctx, 'arn, I: Iterator<Item = char>, O: FnMut(Token<'arn>, Span)> LexState
         return self.lex_may_any(ce, slash_to);
     }
 
-    /// Lexes a comment, starting with `//`.
+    /// Lexes a line comment, starting with `//`.
     fn lex_comment(mut self, from: Pos) {
-        // Lexes a line comment
         let mut s = self.new_astring();
         loop {
             match self.inc() {
@@ -592,7 +591,7 @@ mod tests {
     use crate::{span, util::pos::pos};
     use std::fmt::Write;
 
-    /// Big code containing all kinds of tokens
+    /// Big text containing all kinds of tokens.
     const BIG: &str = r"() [] {} // xxx
 = == ~= *
 && || ~
