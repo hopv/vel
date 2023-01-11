@@ -82,7 +82,14 @@ pub enum Token<'arn> {
     Comment(&'arn str),
     /// Whitespace
     Ws(&'arn str),
+    /// Error token
+    ErrTok(LexError<'arn>),
+}
+use Token::*;
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+/// Vel lexing error.
+pub enum LexError<'arn> {
     /// Empty binary number
     EmptyBinNum(&'arn str),
     /// Empty hexadecimal number
@@ -93,22 +100,6 @@ pub enum Token<'arn> {
     StrayBar(CharOrEof),
     /// Invalid character
     InvalidChar(char),
-}
-use Token::*;
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-/// Vel lexing error.
-pub enum LexError<'arn> {
-    /// Empty binary number
-    EEmptyBinNum(&'arn str),
-    /// Empty hexadecimal number
-    EEmptyHexNum(&'arn str),
-    /// Stray `&`
-    EStrayAmp(CharOrEof),
-    /// Stray `|`
-    EStrayBar(CharOrEof),
-    /// Invalid character
-    EInvalidChar(char),
 }
 use LexError::*;
 
@@ -144,25 +135,13 @@ impl Display for Token<'_> {
             Comment(s) => write!(f, "//{}", s),
             Ws(s) => write!(f, "{}", s),
 
-            EmptyBinNum(s) => write!(f, "0b{}", s),
-            EmptyHexNum(s) => write!(f, "0x{}", s),
-            StrayAmp(_) => write!(f, "&"),
-            StrayBar(_) => write!(f, "|"),
-            InvalidChar(c) => write!(f, "{}", c),
-        }
-    }
-}
-
-impl<'arn> Token<'arn> {
-    /// Turns a token possibly into a lex error
-    pub fn as_error(self) -> Option<LexError<'arn>> {
-        match self {
-            EmptyBinNum(s) => Some(EEmptyBinNum(s)),
-            EmptyHexNum(s) => Some(EEmptyHexNum(s)),
-            StrayAmp(ce) => Some(EStrayAmp(ce)),
-            StrayBar(ce) => Some(EStrayBar(ce)),
-            InvalidChar(c) => Some(EInvalidChar(c)),
-            _ => None,
+            ErrTok(e) => match e {
+                EmptyBinNum(s) => write!(f, "0b{}", s),
+                EmptyHexNum(s) => write!(f, "0x{}", s),
+                StrayAmp(_) => write!(f, "&"),
+                StrayBar(_) => write!(f, "|"),
+                InvalidChar(c) => write!(f, "{}", c),
+            },
         }
     }
 }
@@ -170,11 +149,11 @@ impl<'arn> Token<'arn> {
 impl Display for LexError<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match *self {
-            EEmptyBinNum(s) => write!(f, "Empty binary number 0b{}", s),
-            EEmptyHexNum(s) => write!(f, "Empty hexadecimal number 0x{}", s),
-            EStrayAmp(ce) => write!(f, "& found stray before: {}", ce),
-            EStrayBar(ce) => write!(f, "| found stray before: {}", ce),
-            EInvalidChar(c) => write!(f, "Invalid character {}", c),
+            EmptyBinNum(s) => write!(f, "Empty binary number: 0b{}", s),
+            EmptyHexNum(s) => write!(f, "Empty hexadecimal number: 0x{}", s),
+            StrayAmp(ce) => write!(f, "Stray & (before {})", ce),
+            StrayBar(ce) => write!(f, "Stray | (before {})", ce),
+            InvalidChar(c) => write!(f, "Invalid character: {}", c),
         }
     }
 }
@@ -286,7 +265,7 @@ impl<'ctx, 'arn, I: Iterator<Item = char>, O: FnMut(Token<'arn>, Span)> LexState
             _ if c.is_whitespace() => return self.lex_ws(c, from),
             // Invalid character
             _ => {
-                self.out(InvalidChar(c), span(from, self.pos));
+                self.out(ErrTok(InvalidChar(c)), span(from, self.pos));
                 return self.lex();
             }
         };
@@ -385,7 +364,7 @@ impl<'ctx, 'arn, I: Iterator<Item = char>, O: FnMut(Token<'arn>, Span)> LexState
             },
         };
         // `&`
-        self.out(StrayAmp(ce), span(from, amp_to));
+        self.out(ErrTok(StrayAmp(ce)), span(from, amp_to));
         return self.lex_may_any(ce, amp_to);
     }
 
@@ -405,7 +384,7 @@ impl<'ctx, 'arn, I: Iterator<Item = char>, O: FnMut(Token<'arn>, Span)> LexState
             },
         };
         // `|`
-        self.out(StrayBar(ce), span(from, bar_to));
+        self.out(ErrTok(StrayBar(ce)), span(from, bar_to));
         return self.lex_may_any(ce, bar_to);
     }
 
@@ -501,7 +480,11 @@ impl<'ctx, 'arn, I: Iterator<Item = char>, O: FnMut(Token<'arn>, Span)> LexState
             }
         };
         let s = s.into_str();
-        let tok = if has_digit { BinNum(s) } else { EmptyBinNum(s) };
+        let tok = if has_digit {
+            BinNum(s)
+        } else {
+            ErrTok(EmptyBinNum(s))
+        };
         self.out(tok, span(from, to));
         return self.lex_may_any(ce, to);
     }
@@ -526,7 +509,11 @@ impl<'ctx, 'arn, I: Iterator<Item = char>, O: FnMut(Token<'arn>, Span)> LexState
             }
         };
         let s = s.into_str();
-        let tok = if has_digit { HexNum(s) } else { EmptyHexNum(s) };
+        let tok = if has_digit {
+            HexNum(s)
+        } else {
+            ErrTok(EmptyHexNum(s))
+        };
         self.out(tok, span(from, to));
         return self.lex_may_any(ce, to);
     }
@@ -677,11 +664,11 @@ abcde
                 (BinNum("01"), span!((6, 4)..(6, 8))),
                 (HexNum("a0f"), span!((6, 9)..(6, 14))),
                 (Ident("abcde"), span!((7, 0)..(7, 5))),
-                (EmptyBinNum("__"), span!((8, 0)..(8, 4))),
-                (EmptyHexNum("__"), span!((8, 5)..(8, 9))),
-                (StrayAmp(Char(' ')), span!((9, 0)..(9, 1))),
-                (StrayBar(Char(' ')), span!((9, 2)..(9, 3))),
-                (InvalidChar('♡'), span!((9, 4)..(9, 5))),
+                (ErrTok(EmptyBinNum("__")), span!((8, 0)..(8, 4))),
+                (ErrTok(EmptyHexNum("__")), span!((8, 5)..(8, 9))),
+                (ErrTok(StrayAmp(Char(' '))), span!((9, 0)..(9, 1))),
+                (ErrTok(StrayBar(Char(' '))), span!((9, 2)..(9, 3))),
+                (ErrTok(InvalidChar('♡')), span!((9, 4)..(9, 5))),
             ],
         );
     }
