@@ -1,5 +1,4 @@
-use bumpalo::Bump;
-use std::cell::UnsafeCell;
+use crate::util::arena::Arena;
 use std::fmt::{Debug, Display};
 use std::{collections::hash_map::HashMap, hash::Hash};
 
@@ -75,7 +74,7 @@ impl<T: ?Sized> std::ops::Deref for Intern<'_, T> {
 /// Interns objects of a sized type `T`.
 pub struct Interner<'arn, T> {
     /// Memoization table.
-    memo: UnsafeCell<HashMap<&'arn T, usize>>,
+    memo: HashMap<&'arn T, usize>,
 }
 
 impl<'arn, T: Clone + Eq + Hash> Interner<'arn, T> {
@@ -83,18 +82,15 @@ impl<'arn, T: Clone + Eq + Hash> Interner<'arn, T> {
     #[inline]
     pub fn new() -> Self {
         Self {
-            memo: UnsafeCell::new(HashMap::new()),
+            memo: HashMap::new(),
         }
     }
 
     /// Interns an object.
-    ///
-    /// This is safe as long as `T::clone`, `T::eq` and `T::hash`
-    /// don't perform `self.intern`, which is almost always the case.
-    pub unsafe fn intern(&self, o: &T, arena: &'arn Bump) -> Intern<'arn, T> {
-        let memo = &mut *self.memo.get();
+    pub fn intern(&mut self, o: &T, arena: &'arn Arena) -> Intern<'arn, T> {
+        let memo = &mut self.memo;
         match memo.get_key_value(o) {
-            Some((obj, &id)) => Intern { id, obj },
+            Some((&obj, &id)) => Intern { id, obj },
             None => {
                 let id = memo.len();
                 let obj = arena.alloc_with(|| o.clone());
@@ -108,7 +104,7 @@ impl<'arn, T: Clone + Eq + Hash> Interner<'arn, T> {
 /// Interns strings.
 pub struct StrInterner<'arn> {
     /// Memoization table.
-    memo: UnsafeCell<HashMap<&'arn str, usize>>,
+    memo: HashMap<&'arn str, usize>,
 }
 
 impl<'arn> StrInterner<'arn> {
@@ -116,16 +112,15 @@ impl<'arn> StrInterner<'arn> {
     #[inline]
     pub fn new() -> Self {
         Self {
-            memo: UnsafeCell::new(HashMap::new()),
+            memo: HashMap::new(),
         }
     }
 
     /// Interns a string.
-    pub fn intern(&self, s: &str, arena: &'arn Bump) -> Intern<'arn, str> {
-        let memo = unsafe { &mut *self.memo.get() };
-        // This mutation of memo is safe because only &str is used.
+    pub fn intern(&mut self, s: &str, arena: &'arn Arena) -> Intern<'arn, str> {
+        let memo = &mut self.memo;
         match memo.get_key_value(s) {
-            Some((obj, id)) => Intern { id: *id, obj },
+            Some((&obj, &id)) => Intern { id, obj },
             None => {
                 let id = memo.len();
                 let obj = arena.alloc_str(s);

@@ -9,4 +9,4 @@ edition = "2021"
 publish = false
 
 [dependencies]
-bumpalo = "3.11.1"
+bumpalo = { version = "3.11.1", features = ["collections"] }
