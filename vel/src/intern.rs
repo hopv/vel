@@ -13,9 +13,9 @@ use std::{collections::hash_map::HashMap, hash::Hash};
 #[derive(Debug, Copy, Clone)]
 pub struct Intern<'arn, T: ?Sized> {
     /// Id, given deterministically in the order of registration.
-    id: usize,
+    pub id: usize,
     /// Reference to the object.
-    obj: &'arn T,
+    pub obj: &'arn T,
 }
 
 impl<T: ?Sized + Display> Display for Intern<'_, T> {
