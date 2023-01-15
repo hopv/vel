@@ -2,7 +2,22 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Vel",
   "scopeName": "source.vel",
+  "repository": {
+    "block-comment": {
+      "begin": "/\\*",
+      "end": "\\*/",
+      "name": "comment.block.vel",
+      "patterns": [
+        {
+          "include": "#block-comment"
+        }
+      ]
+    }
+  },
   "patterns": [
+    {
+      "include": "#block-comment"
+    },
     {
       "name": "comment.line.double-slash.vel",
       "match": "//.*$"

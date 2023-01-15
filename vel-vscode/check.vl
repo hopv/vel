@@ -1,3 +1,4 @@
 . .. ..= : = == ~= * && || ~ < <= > >= + - / & | fn let
 123_456 0b01_10 0xbe_ef 0b__ 0x__ // comment
 abc_def 漢字
+/* block /* nested */ comment */
