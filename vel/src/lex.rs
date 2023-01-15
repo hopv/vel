@@ -2,20 +2,29 @@ use crate::util::arena::{AString, AStringExt, Arena, ArenaExt};
 use crate::util::pos::{span, Pos, Span};
 use std::fmt::{Display, Formatter, Result};
 
-/// A character or EOF.
+/// Something or EOF.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum CharOrEof {
-    /// Character.
-    Char(char),
+pub enum OrEof<T> {
+    /// Has a content.
+    Just(T),
     /// EOF, or the end of the input stream.
     Eof,
 }
-use CharOrEof::*;
+use OrEof::*;
 
-impl Display for CharOrEof {
+impl<T> From<Option<T>> for OrEof<T> {
+    fn from(o: Option<T>) -> Self {
+        match o {
+            Some(v) => Just(v),
+            None => Eof,
+        }
+    }
+}
+
+impl<T: Display> Display for OrEof<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match *self {
-            Char(c) => write!(f, "{}", c),
+        match self {
+            Just(v) => write!(f, "{}", v),
             Eof => write!(f, "EOF"),
         }
     }
@@ -25,7 +34,7 @@ impl Display for CharOrEof {
 ///
 /// Has the information to retrieve the original source code.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum Token<'arn> {
+pub enum Token<'a> {
     /// `(`.
     LParen,
     /// `)`.
@@ -70,38 +79,54 @@ pub enum Token<'arn> {
     Fn,
     /// `let`.
     Let,
-    /// Number.
-    Num(&'arn str),
-    /// Binary number.
-    BinNum(&'arn str),
-    /// Hexadecimal number.
-    HexNum(&'arn str),
+    /// Number literal.
+    Num { body: NumLit<'a>, val: i64 },
     /// Identifier.
-    Ident(&'arn str),
+    Ident { name: &'a str },
+    /// Doc line comment, `///...`.
+    DocComment { body: &'a str },
     /// Line comment, `//...`.
-    Comment(&'arn str),
+    Comment { body: &'a str },
     /// Whitespace.
-    Ws(&'arn str),
+    Whitespace { str: &'a str },
     /// Error token.
-    ErrTok(LexError<'arn>),
+    Error(LexErr<'a>),
 }
-use Token::*;
+pub use Token::*;
+
+/// Number literal.
+#[inline]
+pub fn num<'a>(body: NumLit<'a>, val: i64) -> Token<'a> {
+    Num { body, val }
+}
+
+/// Number literal.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum NumLit<'a> {
+    /// Decimal.
+    Dec(&'a str),
+    /// Binary.
+    Bin(&'a str),
+    /// Hexadecimal.
+    Hex(&'a str),
+}
+pub use NumLit::*;
 
 /// Vel lexing error.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum LexError<'arn> {
+pub enum LexErr<'a> {
     /// Empty binary number.
-    EmptyBinNum(&'arn str),
+    EmptyBinNum { body: &'a str },
     /// Empty hexadecimal number.
-    EmptyHexNum(&'arn str),
+    EmptyHexNum { body: &'a str },
     /// Stray `&`.
-    StrayAmp(CharOrEof),
+    StrayAmp { next: OrEof<char> },
     /// Stray `|`.
-    StrayBar(CharOrEof),
+    StrayBar { next: OrEof<char> },
     /// Invalid character.
-    InvalidChar(char),
+    InvalidChar { c: char },
 }
-use LexError::*;
+pub use LexErr::*;
 
 impl Display for Token<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -128,82 +153,113 @@ impl Display for Token<'_> {
             Div => write!(f, "/"),
             Fn => write!(f, "fn"),
             Let => write!(f, "let"),
-            Num(s) => write!(f, "{}", s),
-            BinNum(s) => write!(f, "0b{}", s),
-            HexNum(s) => write!(f, "0x{}", s),
-            Ident(s) => write!(f, "{}", s),
-            Comment(s) => write!(f, "//{}", s),
-            Ws(s) => write!(f, "{}", s),
-
-            ErrTok(e) => match e {
-                EmptyBinNum(s) => write!(f, "0b{}", s),
-                EmptyHexNum(s) => write!(f, "0x{}", s),
-                StrayAmp(_) => write!(f, "&"),
-                StrayBar(_) => write!(f, "|"),
-                InvalidChar(c) => write!(f, "{}", c),
-            },
+            Num { body, .. } => write!(f, "{}", body),
+            Ident { name } => write!(f, "{}", name),
+            Comment { body } => write!(f, "//{}", body),
+            DocComment { body } => write!(f, "///{}", body),
+            Whitespace { str } => write!(f, "{}", str),
+            Error(e) => write!(f, "{}", e),
         }
     }
 }
 
-impl Display for LexError<'_> {
+impl Display for NumLit<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match *self {
-            EmptyBinNum(s) => write!(f, "Empty binary number: 0b{}", s),
-            EmptyHexNum(s) => write!(f, "Empty hexadecimal number: 0x{}", s),
-            StrayAmp(ce) => write!(f, "Stray & (before {})", ce),
-            StrayBar(ce) => write!(f, "Stray | (before {})", ce),
-            InvalidChar(c) => write!(f, "Invalid character: {}", c),
+            Dec(s) => write!(f, "{}", s),
+            Bin(s) => write!(f, "0b{}", s),
+            Hex(s) => write!(f, "0x{}", s),
         }
     }
 }
 
-/// Lexes from a character stream to output Vel tokens.
-#[inline]
-pub fn lex<'arn>(
-    from: Pos,
-    ins: impl Iterator<Item = char>,
-    out: impl FnMut(Token<'arn>, Span),
-    arn: &'arn Arena,
-) {
-    LexState::new(from, ins, out, arn).lex();
+impl Display for LexErr<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match *self {
+            EmptyBinNum { body } => write!(f, "0b{}", body),
+            EmptyHexNum { body } => write!(f, "0x{}", body),
+            StrayAmp { .. } => write!(f, "&"),
+            StrayBar { .. } => write!(f, "|"),
+            InvalidChar { c } => write!(f, "{}", c),
+        }
+    }
 }
 
-/// State of a lexer.
-struct LexState<'arn, I, O> {
-    /// Position.
+impl<'a> LexErr<'a> {
+    /// Displays the error message.
+    #[inline]
+    pub fn msg(self) -> LexErrMsg<'a> {
+        LexErrMsg(self)
+    }
+}
+
+/// Displays the error message for LexErr.
+pub struct LexErrMsg<'a>(LexErr<'a>);
+
+impl Display for LexErrMsg<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self.0 {
+            EmptyBinNum { body } => write!(f, "Binary number without digits 0b{}", body),
+            EmptyHexNum { body } => write!(f, "Hexadecimal number without digits 0x{}", body),
+            StrayAmp { next } => write!(f, "Stray & (before {}), && is expected", next),
+            StrayBar { next } => write!(f, "Stray | (before {}), || is expected", next),
+            InvalidChar { c } => write!(f, "Invalid character {}", c),
+        }
+    }
+}
+
+/// Lexer.
+/// Works in linear time, with only one lookahead.
+pub struct Lexer<'arn, I> {
+    /// Current head character.
+    head: OrEof<char>,
+    /// Current position.
     pos: Pos,
-    /// Input.
-    ins: I,
-    /// Output.
-    out: O,
+    /// Input iterator.
+    input: I,
     /// Arena.
     arn: &'arn Arena,
 }
 
-impl<'ctx, 'arn, I: Iterator<Item = char>, O: FnMut(Token<'arn>, Span)> LexState<'arn, I, O> {
-    /// Creates a lex state.
-    #[inline]
-    fn new(pos: Pos, ins: I, out: O, arn: &'arn Arena) -> Self {
-        Self { pos, ins, out, arn }
-    }
+/// Creates a lexer.
+#[inline]
+pub fn lexer<'arn, I: Iterator<Item = char>>(
+    pos: Pos,
+    input: I,
+    arn: &'arn Arena,
+) -> Lexer<'arn, I> {
+    Lexer::new(pos, input, arn)
+}
 
-    /// Inputs one character.
-    #[inline]
-    fn inc(&mut self) -> CharOrEof {
-        match self.ins.next() {
-            None => Eof,
-            Some(c) => {
-                self.pos = self.pos.after(c);
-                Char(c)
-            }
+impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
+    /// Creates a lexer.
+    pub fn new(pos: Pos, mut input: I, arn: &'arn Arena) -> Self {
+        let head = input.next().into();
+        Self {
+            head,
+            pos,
+            input,
+            arn,
         }
     }
 
-    /// Outputs a token and a span.
+    /// Gets the current position.
+    pub fn pos(&self) -> Pos {
+        self.pos
+    }
+
+    /// Moves the cursor one character ahead.
+    /// Returns itself for convenience.
     #[inline]
-    fn out(&mut self, tok: Token<'arn>, span: Span) {
-        (self.out)(tok, span);
+    fn mov(&mut self) -> &mut Self {
+        match self.head {
+            Eof => panic!("Cannot perform mov when the head is EOF"),
+            Just(c) => {
+                self.pos = self.pos.after(c);
+                self.head = self.input.next().into();
+            }
+        }
+        self
     }
 
     /// Creates a new `AString`.
@@ -211,25 +267,13 @@ impl<'ctx, 'arn, I: Iterator<Item = char>, O: FnMut(Token<'arn>, Span)> LexState
         self.arn.new_astring()
     }
 
-    /// Lexes, without the head character.
-    #[inline]
-    fn lex(mut self) {
-        let from = self.pos;
-        let ce = self.inc();
-        return self.lex_may_any(ce, from);
-    }
-
-    /// Lexes, starting possibly with a character.
-    #[inline]
-    fn lex_may_any(self, ce: CharOrEof, from: Pos) {
-        if let Char(c) = ce {
-            return self.lex_any(c, from);
-        }
-    }
-
-    /// Lexes, starting with any character.
-    fn lex_any(mut self, c: char, from: Pos) {
-        let tok = match c {
+    /// Lexes the next token.
+    pub fn lex(&mut self) -> OrEof<Token<'arn>> {
+        let head = match self.head {
+            Eof => return Eof,
+            Just(c) => c,
+        };
+        let tok = match head {
             // Determined at this point
             '(' => LParen,
             ')' => RParen,
@@ -241,347 +285,337 @@ impl<'ctx, 'arn, I: Iterator<Item = char>, O: FnMut(Token<'arn>, Span)> LexState
             '+' => Plus,
             '-' => Minus,
             // Starting with `=`
-            '=' => return self.lex_eq(from),
+            '=' => return self.mov().lex_eq(),
             // Starting with `~`
-            '~' => return self.lex_tilde(from),
+            '~' => return self.mov().lex_tilde(),
             // Starting with `/`
-            '/' => return self.lex_slash(from),
+            '/' => return self.mov().lex_slash(),
             // Starting with `&`
-            '&' => return self.lex_amp(from),
+            '&' => return self.mov().lex_amp(),
             // Starting with `|`
-            '|' => return self.lex_bar(from),
+            '|' => return self.mov().lex_bar(),
             // Starting with `<`
-            '<' => return self.lex_lt(from),
+            '<' => return self.mov().lex_lt(),
             // Starting with `>`
-            '>' => return self.lex_gt(from),
+            '>' => return self.mov().lex_gt(),
             // Starting with zero
-            '0' => return self.lex_zero(from),
+            '0' => return self.mov().lex_0(),
             // Number, starting with a nonzero digit, `1`-`9`
-            '1'..='9' => return self.lex_nonzero(c, from),
+            '1'..='9' => return self.lex_dec_num(false),
             // Name, starting with '_' or an alphabet character
-            '_' => return self.lex_name(c, from),
-            _ if c.is_alphabetic() => return self.lex_name(c, from),
+            '_' => return self.lex_name(),
+            _ if head.is_alphabetic() => return self.lex_name(),
             // Starting with a whitespace character
-            _ if c.is_whitespace() => return self.lex_ws(c, from),
+            _ if head.is_whitespace() => return self.lex_whitespace(),
             // Invalid character
-            _ => {
-                self.out(ErrTok(InvalidChar(c)), span(from, self.pos));
-                return self.lex();
-            }
+            _ => Error(InvalidChar { c: head }),
         };
-        self.out(tok, span(from, self.pos));
-        return self.lex();
+        self.mov();
+        Just(tok)
     }
 
-    /// Lexes, starting with `=`.
-    fn lex_eq(mut self, from: Pos) {
-        let eq_to = self.pos;
-        let ce = match self.inc() {
-            Eof => Eof,
-            Char(c) => match c {
+    /// Lexes the next token, starting with `=`.
+    fn lex_eq(&mut self) -> OrEof<Token<'arn>> {
+        match self.head {
+            Eof => Just(Eq),
+            Just(head) => match head {
                 // `==`
                 '=' => {
-                    let eq2_to = self.pos;
-                    self.out(Eq2, span(from, eq2_to));
-                    return self.lex();
+                    self.mov();
+                    Just(Eq2)
                 }
-                _ => Char(c),
+                _ => Just(Eq),
             },
-        };
-        // `=`
-        self.out(Eq, span(from, eq_to));
-        return self.lex_may_any(ce, eq_to);
+        }
     }
 
     /// Lexes, starting with `~`.
-    fn lex_tilde(mut self, from: Pos) {
-        let not_to = self.pos;
-        let ce = match self.inc() {
-            Eof => Eof,
-            Char(c) => match c {
+    fn lex_tilde(&mut self) -> OrEof<Token<'arn>> {
+        match self.head {
+            Eof => Just(Not),
+            Just(head) => match head {
                 // `~=`
                 '=' => {
-                    let neq_to = self.pos;
-                    self.out(Neq, span(from, neq_to));
-                    return self.lex();
+                    self.mov();
+                    Just(Neq)
                 }
-                _ => Char(c),
+                _ => Just(Not),
             },
-        };
-        // `~`
-        self.out(Not, span(from, not_to));
-        return self.lex_may_any(ce, not_to);
+        }
     }
 
-    /// Lexes, starting with `/`.
-    fn lex_slash(mut self, from: Pos) {
-        let slash_to = self.pos;
-        let ce = match self.inc() {
-            Eof => Eof,
-            Char(c) => match c {
-                // Comment, starting with `//`
-                '/' => return self.lex_comment(from),
-                _ => Char(c),
+    /// Lexes the next token, starting with `/`.
+    fn lex_slash(&mut self) -> OrEof<Token<'arn>> {
+        match self.head {
+            Eof => Just(Div),
+            Just(head) => match head {
+                // `//`
+                '/' => self.mov().lex_slash2(),
+                _ => Just(Div),
             },
-        };
-        // `/`
-        self.out(Div, span(from, slash_to));
-        return self.lex_may_any(ce, slash_to);
+        }
     }
 
-    /// Lexes a line comment, starting with `//`.
-    fn lex_comment(mut self, from: Pos) {
-        let mut s = self.new_astring();
+    /// Lexes the next token, starting with `//`.
+    fn lex_slash2(&mut self) -> OrEof<Token<'arn>> {
+        let is_doc = match self.head {
+            // `///`, a doc line comment
+            Just('/') => {
+                self.mov();
+                true
+            }
+            _ => false,
+        };
+        let mut body = self.new_astring();
         loop {
-            match self.inc() {
+            match self.head {
                 Eof => break,
-                Char(c) => {
-                    s.push(c);
-                    if c == '\n' {
+                Just(head) => {
+                    body.push(head);
+                    self.mov();
+                    if head == '\n' {
                         break;
                     }
                 }
             }
         }
-        self.out(Comment(s.into_str()), span(from, self.pos));
-        return self.lex();
+        let body = body.into_str();
+        Just(if is_doc {
+            DocComment { body }
+        } else {
+            Comment { body }
+        })
     }
 
-    /// Lexes, starting with `&`.
-    fn lex_amp(mut self, from: Pos) {
-        let amp_to = self.pos;
-        let ce = match self.inc() {
-            Eof => Eof,
-            Char(c) => match c {
+    /// Lexes the next token, starting with `&`.
+    fn lex_amp(&mut self) -> OrEof<Token<'arn>> {
+        match self.head {
+            Eof => Just(Error(StrayAmp { next: Eof })),
+            Just(head) => match head {
                 // `&&`
                 '&' => {
-                    let and_to = self.pos;
-                    self.out(And, span(from, and_to));
-                    return self.lex();
+                    self.mov();
+                    Just(And)
                 }
-                _ => Char(c),
+                _ => Just(Error(StrayAmp { next: Just(head) })),
             },
-        };
-        // `&`
-        self.out(ErrTok(StrayAmp(ce)), span(from, amp_to));
-        return self.lex_may_any(ce, amp_to);
-    }
-
-    /// Lexes, starting with `|`.
-    fn lex_bar(mut self, from: Pos) {
-        let bar_to = self.pos;
-        let ce = match self.inc() {
-            Eof => Eof,
-            Char(c) => match c {
-                // `||`
-                '|' => {
-                    let or_to = self.pos;
-                    self.out(Or, span(from, or_to));
-                    return self.lex();
-                }
-                _ => Char(c),
-            },
-        };
-        // `|`
-        self.out(ErrTok(StrayBar(ce)), span(from, bar_to));
-        return self.lex_may_any(ce, bar_to);
-    }
-
-    /// Lexes, starting with `<`.
-    fn lex_lt(mut self, from: Pos) {
-        let lt_to = self.pos;
-        let ce = match self.inc() {
-            Eof => Eof,
-            Char(c) => match c {
-                // `<=`
-                '=' => {
-                    let leq_to = self.pos;
-                    self.out(Leq, span(from, leq_to));
-                    return self.lex();
-                }
-                _ => Char(c),
-            },
-        };
-        // `<`
-        self.out(Lt, span(from, lt_to));
-        return self.lex_may_any(ce, lt_to);
-    }
-
-    /// Lexes, starting with `>`.
-    fn lex_gt(mut self, from: Pos) {
-        let gt_to = self.pos;
-        let ce = match self.inc() {
-            Eof => Eof,
-            Char(c) => match c {
-                // `>=`
-                '=' => {
-                    let geq_to = self.pos;
-                    self.out(Geq, span(from, geq_to));
-                    return self.lex();
-                }
-                _ => Char(c),
-            },
-        };
-        // `>`
-        self.out(Gt, span(from, gt_to));
-        return self.lex_may_any(ce, gt_to);
-    }
-
-    /// Lexes, starting with zero.
-    fn lex_zero(mut self, from: Pos) {
-        let zero_to = self.pos;
-        let (s, ce, to) = match self.inc() {
-            Eof => ("0", Eof, zero_to),
-            Char(c) => match c {
-                // Binary number, starting with `0b`
-                'b' => return self.lex_bin_num(from),
-                // Hexadecimal number, starting with `0x`
-                'x' => return self.lex_hex_num(from),
-                '_' | '0'..='9' => {
-                    let mut s = self.new_astring();
-                    s.push('0');
-                    s.push(c);
-                    loop {
-                        let to = self.pos;
-                        match self.inc() {
-                            Eof => break (s.into_str(), Eof, to),
-                            Char(c) => match c {
-                                '_' | '0'..='9' => s.push(c),
-                                _ => break (s.into_str(), Char(c), to),
-                            },
-                        }
-                    }
-                }
-                _ => ("0", Char(c), zero_to),
-            },
-        };
-        self.out(Num(s), span(from, to));
-        return self.lex_may_any(ce, to);
-    }
-
-    /// Lexes a binary number, starting with `0b`.
-    fn lex_bin_num(mut self, from: Pos) {
-        let mut s = self.new_astring();
-        let mut has_digit = false;
-        let (ce, to) = loop {
-            let to = self.pos;
-            match self.inc() {
-                Eof => break (Eof, to),
-                Char(c) => match c {
-                    // Continues for `_` or a digit `0`/`1`.
-                    '_' => s.push(c),
-                    '0' | '1' => {
-                        has_digit = true;
-                        s.push(c);
-                    }
-                    _ => break (Char(c), to),
-                },
-            }
-        };
-        let s = s.into_str();
-        let tok = if has_digit {
-            BinNum(s)
-        } else {
-            ErrTok(EmptyBinNum(s))
-        };
-        self.out(tok, span(from, to));
-        return self.lex_may_any(ce, to);
-    }
-
-    /// Lexes a hexadecimal number, starting with `0x`.
-    fn lex_hex_num(mut self, from: Pos) {
-        let mut s = self.new_astring();
-        let mut has_digit = false;
-        let (ce, to) = loop {
-            let to = self.pos;
-            match self.inc() {
-                Eof => break (Eof, to),
-                Char(c) => match c {
-                    // Continues for `_` or a digit `0`-`9`, `a`-`f`, `A`-`F`.
-                    '_' => s.push(c),
-                    '0'..='9' | 'a'..='f' | 'A'..='F' => {
-                        has_digit = true;
-                        s.push(c);
-                    }
-                    _ => break (Char(c), to),
-                },
-            }
-        };
-        let s = s.into_str();
-        let tok = if has_digit {
-            HexNum(s)
-        } else {
-            ErrTok(EmptyHexNum(s))
-        };
-        self.out(tok, span(from, to));
-        return self.lex_may_any(ce, to);
-    }
-
-    /// Lexes a number, starting with a nonzero digit `1`-`9`.
-    fn lex_nonzero(mut self, c: char, from: Pos) {
-        let mut s = self.new_astring();
-        s.push(c);
-        let (ce, to) = loop {
-            let to = self.pos;
-            match self.inc() {
-                Eof => break (Eof, to),
-                Char(c) => match c {
-                    // Continues for `_` or a digit `0`-`9`.
-                    '_' | '0'..='9' => s.push(c),
-                    _ => break (Char(c), to),
-                },
-            }
-        };
-        self.out(Num(s.into_str()), span(from, to));
-        return self.lex_may_any(ce, to);
-    }
-
-    /// Lexes a name.
-    fn lex_name(mut self, c: char, from: Pos) {
-        let mut s = self.new_astring();
-        s.push(c);
-        let (ce, to) = loop {
-            let to = self.pos;
-            match self.inc() {
-                Eof => break (Eof, to),
-                Char(c) => match c {
-                    // Continues for `_`, `0`-`9`, or an alphabet character.
-                    '_' | '0'..='9' => s.push(c),
-                    _ if c.is_alphabetic() => s.push(c),
-                    _ => break (Char(c), to),
-                },
-            };
-        };
-        self.out(self.name_token(s.into_str()), span(from, to));
-        return self.lex_may_any(ce, from);
-    }
-
-    /// Gets the token for the name.
-    fn name_token(&self, s: &'arn str) -> Token<'arn> {
-        match s {
-            "fn" => Fn,
-            "let" => Let,
-            _ => Ident(s),
         }
     }
 
-    /// Lexes, starting with a whitespace character.
-    fn lex_ws(mut self, c: char, from: Pos) {
-        let mut s = self.new_astring();
-        s.push(c);
-        let (ce, to) = loop {
-            let to = self.pos;
-            match self.inc() {
-                Eof => break (Eof, to),
-                Char(c) => match c {
-                    // Continues for a whitespace character.
-                    _ if c.is_whitespace() => s.push(c),
-                    _ => break (Char(c), to),
+    /// Lexes the next token, starting with `|`.
+    fn lex_bar(&mut self) -> OrEof<Token<'arn>> {
+        match self.head {
+            Eof => Just(Error(StrayBar { next: Eof })),
+            Just(head) => match head {
+                // `||`
+                '|' => {
+                    self.mov();
+                    Just(Or)
+                }
+                _ => Just(Error(StrayBar { next: Just(head) })),
+            },
+        }
+    }
+
+    /// Lexes the next token, starting with `<`.
+    fn lex_lt(&mut self) -> OrEof<Token<'arn>> {
+        match self.head {
+            Eof => Just(Lt),
+            Just(head) => match head {
+                // `<=`
+                '=' => {
+                    self.mov();
+                    Just(Leq)
+                }
+                _ => Just(Lt),
+            },
+        }
+    }
+
+    /// Lexes the next token, starting with `>`.
+    fn lex_gt(&mut self) -> OrEof<Token<'arn>> {
+        match self.head {
+            Eof => Just(Gt),
+            Just(head) => match head {
+                // `>=`
+                '=' => {
+                    self.mov();
+                    Just(Geq)
+                }
+                _ => Just(Gt),
+            },
+        }
+    }
+
+    /// Lexes the next token, starting with zero.
+    fn lex_0(&mut self) -> OrEof<Token<'arn>> {
+        match self.head {
+            Eof => self.lex_dec_num(true),
+            Just(head) => match head {
+                // Binary number, starting with `0b`
+                'b' => self.mov().lex_0b(),
+                // Hexadecimal number, starting with `0x`
+                'x' => self.mov().lex_0x(),
+                // Decimal number, starting with `0` not followed by `b`/`x`
+                _ => self.lex_dec_num(true),
+            },
+        }
+    }
+
+    /// Lexes the next number literal token, starting with `0b`.
+    fn lex_0b(&mut self) -> OrEof<Token<'arn>> {
+        let mut body = self.new_astring();
+        let mut val = 0i64;
+        let mut has_digit = false;
+        loop {
+            match self.head {
+                Eof => break,
+                Just(head) => match head {
+                    // Separator
+                    '_' => {
+                        body.push(head);
+                        self.mov();
+                    }
+                    // Digit
+                    '0' | '1' => {
+                        has_digit = true;
+                        val = val * 2 + (head as u8 - '0' as u8) as i64;
+                        body.push(head);
+                        self.mov();
+                    }
+                    _ => break,
                 },
             }
-        };
-        self.out(Ws(s.into_str()), span(from, to));
-        return self.lex_may_any(ce, to);
+        }
+        let body = body.into_str();
+        Just(if !has_digit {
+            Error(EmptyBinNum { body })
+        } else {
+            num(Bin(body), val)
+        })
+    }
+
+    /// Lexes the next token, a hexadecimal number starting with `0x`.
+    fn lex_0x(&mut self) -> OrEof<Token<'arn>> {
+        let mut body = self.new_astring();
+        let mut val = 0i64;
+        let mut has_digit = false;
+        loop {
+            match self.head {
+                Eof => break,
+                Just(head) => match head {
+                    // Separator
+                    '_' => {
+                        body.push(head);
+                        self.mov();
+                    }
+                    // Digit
+                    '0'..='9' | 'a'..='f' | 'A'..='F' => {
+                        has_digit = true;
+                        val = val * 16 + head.to_digit(16).unwrap() as i64;
+                        body.push(head);
+                        self.mov();
+                    }
+                    _ => break,
+                },
+            }
+        }
+        let body = body.into_str();
+        Just(if !has_digit {
+            Error(EmptyHexNum { body })
+        } else {
+            num(Hex(body), val)
+        })
+    }
+
+    /// Lexes the next decimal number token.
+    fn lex_dec_num(&mut self, head_0: bool) -> OrEof<Token<'arn>> {
+        let mut body = self.new_astring();
+        if head_0 {
+            body.push('0');
+        }
+        let mut val = 0i64;
+        loop {
+            match self.head {
+                Eof => break,
+                Just(head) => match head {
+                    '_' => {
+                        body.push(head);
+                        self.mov();
+                    }
+                    '0'..='9' => {
+                        body.push(head);
+                        val = val * 10 + (head as u8 - '0' as u8) as i64;
+                        self.mov();
+                    }
+                    _ => break,
+                },
+            }
+        }
+        Just(num(Dec(body.into_str()), val))
+    }
+
+    /// Lexes a name.
+    fn lex_name(&mut self) -> OrEof<Token<'arn>> {
+        let mut name = self.new_astring();
+        loop {
+            match self.head {
+                Eof => break,
+                Just(head) => match head {
+                    // Continues for `_`, `0`-`9`, or an alphabet character.
+                    '_' | '0'..='9' => {
+                        name.push(head);
+                        self.mov();
+                    }
+                    _ if head.is_alphabetic() => {
+                        name.push(head);
+                        self.mov();
+                    }
+                    _ => break,
+                },
+            };
+        }
+        Just(match name.into_str() {
+            "fn" => Fn,
+            "let" => Let,
+            name => Ident { name },
+        })
+    }
+
+    /// Lexes the next token, starting with a whitespace character.
+    fn lex_whitespace(&mut self) -> OrEof<Token<'arn>> {
+        let mut str = self.new_astring();
+        loop {
+            match self.head {
+                Eof => break,
+                Just(head) => {
+                    if head.is_whitespace() {
+                        // Continues for a whitespace character.
+                        str.push(head);
+                        self.mov();
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        Just(Whitespace {
+            str: str.into_str(),
+        })
+    }
+}
+
+impl<'arn, I: Iterator<Item = char>> Iterator for Lexer<'arn, I> {
+    type Item = (Token<'arn>, Span);
+    fn next(&mut self) -> Option<Self::Item> {
+        let from = self.pos;
+        match self.lex() {
+            Eof => None,
+            Just(tok) => {
+                let to = self.pos;
+                Some((tok, span(from, to)))
+            }
+        }
     }
 }
 
@@ -592,38 +626,37 @@ mod tests {
     use std::fmt::Write;
 
     /// Big text containing all kinds of tokens.
-    const BIG: &str = r"() [] {} // xxx
-= == ~= *
+    const BIG: &str = r"() [] {} /// xxx
+= == ~= * // yy
 && || ~
 < <= > >=
 + - /
 fn let
-123 0b01 0xa0f
+123 0b101 0xa0f
 abcde
 0b__ 0x__
 & | ♡";
 
     /// Tests that lexing and displaying code retrieves the original code.
     #[test]
-    fn test_lex_display() {
+    fn test_next_display() {
         let arn = Arena::new();
         let mut buf = arn.new_astring();
-        let out = |tok, _| {
+        for (tok, _) in lexer(pos(0, 0), BIG.chars(), &arn) {
             let _ = write!(buf, "{}", tok);
-        };
-        lex(pos(0, 0), BIG.chars(), out, &arn);
+        }
         assert_eq!(BIG, buf);
     }
 
     /// Tests lexing `s` against `get_want` parametrized over the context.
     fn test_lex(s: &str, want: Vec<(Token, Span)>) {
         let arn = Arena::new();
-        let mut res = Vec::new();
-        let out = |tok, span| match tok {
-            Ws(_) => {}
-            _ => res.push((tok, span)),
-        };
-        lex(pos(0, 0), s.chars(), out, &arn);
+        let res: Vec<_> = lexer(pos(0, 0), s.chars(), &arn)
+            .filter(|tok| match tok.0 {
+                Whitespace { .. } => false,
+                _ => true,
+            })
+            .collect();
         for (ts, want_ts) in res.iter().zip(want.iter()) {
             assert_eq!(ts, want_ts);
         }
@@ -632,7 +665,7 @@ abcde
 
     /// Tests lexing all kinds of tokens.
     #[test]
-    fn test_lex_all() {
+    fn test_next_all() {
         test_lex(
             BIG,
             vec![
@@ -642,11 +675,12 @@ abcde
                 (RBrack, span!((0, 4)..(0, 5))),
                 (LCurly, span!((0, 6)..(0, 7))),
                 (RCurly, span!((0, 7)..(0, 8))),
-                (Comment(" xxx\n"), span!((0, 9)..(1, 0))),
+                (DocComment { body: " xxx\n" }, span!((0, 9)..(1, 0))),
                 (Eq, span!((1, 0)..(1, 1))),
                 (Eq2, span!((1, 2)..(1, 4))),
                 (Neq, span!((1, 5)..(1, 7))),
                 (Ast, span!((1, 8)..(1, 9))),
+                (Comment { body: " yy\n" }, span!((1, 10)..(2, 0))),
                 (And, span!((2, 0)..(2, 2))),
                 (Or, span!((2, 3)..(2, 5))),
                 (Not, span!((2, 6)..(2, 7))),
@@ -659,44 +693,47 @@ abcde
                 (Div, span!((4, 4)..(4, 5))),
                 (Fn, span!((5, 0)..(5, 2))),
                 (Let, span!((5, 3)..(5, 6))),
-                (Num("123"), span!((6, 0)..(6, 3))),
-                (BinNum("01"), span!((6, 4)..(6, 8))),
-                (HexNum("a0f"), span!((6, 9)..(6, 14))),
-                (Ident("abcde"), span!((7, 0)..(7, 5))),
-                (ErrTok(EmptyBinNum("__")), span!((8, 0)..(8, 4))),
-                (ErrTok(EmptyHexNum("__")), span!((8, 5)..(8, 9))),
-                (ErrTok(StrayAmp(Char(' '))), span!((9, 0)..(9, 1))),
-                (ErrTok(StrayBar(Char(' '))), span!((9, 2)..(9, 3))),
-                (ErrTok(InvalidChar('♡')), span!((9, 4)..(9, 5))),
+                (num(Dec("123"), 123), span!((6, 0)..(6, 3))),
+                (num(Bin("101"), 0b101), span!((6, 4)..(6, 9))),
+                (num(Hex("a0f"), 0xa0f), span!((6, 10)..(6, 15))),
+                (Ident { name: "abcde" }, span!((7, 0)..(7, 5))),
+                (Error(EmptyBinNum { body: "__" }), span!((8, 0)..(8, 4))),
+                (Error(EmptyHexNum { body: "__" }), span!((8, 5)..(8, 9))),
+                (Error(StrayAmp { next: Just(' ') }), span!((9, 0)..(9, 1))),
+                (Error(StrayBar { next: Just(' ') }), span!((9, 2)..(9, 3))),
+                (Error(InvalidChar { c: '♡' }), span!((9, 4)..(9, 5))),
             ],
         );
     }
 
     /// Tests lexing identifiers.
     #[test]
-    fn test_lex_ident() {
+    fn test_next_ident() {
         test_lex(
             "ab1_cde 漢字",
             vec![
-                (Ident("ab1_cde"), span!((0, 0)..(0, 7))),
-                (Ident("漢字"), span!((0, 8)..(0, 10))),
+                (Ident { name: "ab1_cde" }, span!((0, 0)..(0, 7))),
+                (Ident { name: "漢字" }, span!((0, 8)..(0, 10))),
             ],
         )
     }
 
     /// Tests lexing numbers.
     #[test]
-    fn test_lex_number() {
+    fn test_next_number() {
         test_lex(
-            r"0 0_123 1_234_567
+            r"0 0_123 1_234_567_890
 0b0101_1010
 0xab_01_EF",
             vec![
-                (Num("0"), span!((0, 0)..(0, 1))),
-                (Num("0_123"), span!((0, 2)..(0, 7))),
-                (Num("1_234_567"), span!((0, 8)..(0, 17))),
-                (BinNum("0101_1010"), span!((1, 0)..(1, 11))),
-                (HexNum("ab_01_EF"), span!((2, 0)..(2, 10))),
+                (num(Dec("0"), 0), span!((0, 0)..(0, 1))),
+                (num(Dec("0_123"), 123), span!((0, 2)..(0, 7))),
+                (
+                    num(Dec("1_234_567_890"), 1_234_567_890),
+                    span!((0, 8)..(0, 21)),
+                ),
+                (num(Bin("0101_1010"), 0b0101_1010), span!((1, 0)..(1, 11))),
+                (num(Hex("ab_01_EF"), 0xab_01_EF), span!((2, 0)..(2, 10))),
             ],
         )
     }
