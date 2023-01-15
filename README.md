@@ -1,6 +1,6 @@
 # Vel
 
-<p><img src="./logo/logo.svg" height="70" alt="Vel's logo" /></p>
+<p><img src="./img/logo.svg" height="70" alt="Vel's logo" /></p>
 
 A language for verified low-level software.
 

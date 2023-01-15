@@ -1,6 +1,6 @@
 # Vel's Language Engine
 
-<p><img src="https://raw.githubusercontent.com/hopv/vel/main/logo/logo.svg" height="70" alt="Vel's logo" /></p>
+<p><img src="https://raw.githubusercontent.com/hopv/vel/main/img/logo.svg" height="70" alt="Vel's logo" /></p>
 
 The heart of Vel, its language engine, written in Rust.
 
