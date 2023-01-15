@@ -47,6 +47,18 @@ pub enum Token<'a> {
     LCurly,
     /// `}`.
     RCurly,
+    /// `,`.
+    Comma,
+    /// `;`.
+    Semi,
+    /// `:`.
+    Colon,
+    /// `.`.
+    Dot,
+    /// `..`.
+    Dot2,
+    /// `..=`.
+    Dot2Eq,
     /// `=`.
     Eq,
     /// `==`.
@@ -137,6 +149,12 @@ impl Display for Token<'_> {
             RBrack => write!(f, "]"),
             LCurly => write!(f, "{{"),
             RCurly => write!(f, "}}"),
+            Comma => write!(f, ","),
+            Semi => write!(f, ";"),
+            Colon => write!(f, ":"),
+            Dot => write!(f, "."),
+            Dot2 => write!(f, ".."),
+            Dot2Eq => write!(f, "..="),
             Eq => write!(f, "="),
             Eq2 => write!(f, "=="),
             Neq => write!(f, "~="),
@@ -281,9 +299,14 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
             ']' => RBrack,
             '{' => LCurly,
             '}' => RCurly,
+            ',' => Comma,
+            ';' => Semi,
+            ':' => Colon,
             '*' => Ast,
             '+' => Plus,
             '-' => Minus,
+            // Starting with `.`
+            '.' => return self.mov().lex_dot(),
             // Starting with `=`
             '=' => return self.mov().lex_eq(),
             // Starting with `~`
@@ -312,6 +335,31 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
         };
         self.mov();
         Just(tok)
+    }
+
+    /// Lexes the next token, starting with `.`.
+    fn lex_dot(&mut self) -> OrEof<Token<'arn>> {
+        match self.head {
+            Eof => Just(Dot),
+            Just(head) => match head {
+                // `..`
+                '.' => {
+                    self.mov();
+                    match self.head {
+                        Eof => Just(Dot2),
+                        Just(head) => match head {
+                            // `..=`
+                            '=' => {
+                                self.mov();
+                                Just(Dot2Eq)
+                            }
+                            _ => Just(Dot2),
+                        },
+                    }
+                }
+                _ => Just(Dot),
+            },
+        }
     }
 
     /// Lexes the next token, starting with `=`.
@@ -627,7 +675,8 @@ mod tests {
 
     /// Big text containing all kinds of tokens.
     const BIG: &str = r"() [] {} /// xxx
-= == ~= * // yy
+, ; : . .. ..= // yy
+= == ~= *
 && || ~
 < <= > >=
 + - /
@@ -676,32 +725,38 @@ abcde
                 (LCurly, span!((0, 6)..(0, 7))),
                 (RCurly, span!((0, 7)..(0, 8))),
                 (DocComment { body: " xxx\n" }, span!((0, 9)..(1, 0))),
-                (Eq, span!((1, 0)..(1, 1))),
-                (Eq2, span!((1, 2)..(1, 4))),
-                (Neq, span!((1, 5)..(1, 7))),
-                (Ast, span!((1, 8)..(1, 9))),
-                (Comment { body: " yy\n" }, span!((1, 10)..(2, 0))),
-                (And, span!((2, 0)..(2, 2))),
-                (Or, span!((2, 3)..(2, 5))),
-                (Not, span!((2, 6)..(2, 7))),
-                (Lt, span!((3, 0)..(3, 1))),
-                (Leq, span!((3, 2)..(3, 4))),
-                (Gt, span!((3, 5)..(3, 6))),
-                (Geq, span!((3, 7)..(3, 9))),
-                (Plus, span!((4, 0)..(4, 1))),
-                (Minus, span!((4, 2)..(4, 3))),
-                (Div, span!((4, 4)..(4, 5))),
-                (Fn, span!((5, 0)..(5, 2))),
-                (Let, span!((5, 3)..(5, 6))),
-                (num(Dec("123"), 123), span!((6, 0)..(6, 3))),
-                (num(Bin("101"), 0b101), span!((6, 4)..(6, 9))),
-                (num(Hex("a0f"), 0xa0f), span!((6, 10)..(6, 15))),
-                (Ident { name: "abcde" }, span!((7, 0)..(7, 5))),
-                (Error(EmptyBinNum { body: "__" }), span!((8, 0)..(8, 4))),
-                (Error(EmptyHexNum { body: "__" }), span!((8, 5)..(8, 9))),
-                (Error(StrayAmp { next: Just(' ') }), span!((9, 0)..(9, 1))),
-                (Error(StrayBar { next: Just(' ') }), span!((9, 2)..(9, 3))),
-                (Error(InvalidChar { c: '♡' }), span!((9, 4)..(9, 5))),
+                (Comma, span!((1, 0)..(1, 1))),
+                (Semi, span!((1, 2)..(1, 3))),
+                (Colon, span!((1, 4)..(1, 5))),
+                (Dot, span!((1, 6)..(1, 7))),
+                (Dot2, span!((1, 8)..(1, 10))),
+                (Dot2Eq, span!((1, 11)..(1, 14))),
+                (Comment { body: " yy\n" }, span!((1, 15)..(2, 0))),
+                (Eq, span!((2, 0)..(2, 1))),
+                (Eq2, span!((2, 2)..(2, 4))),
+                (Neq, span!((2, 5)..(2, 7))),
+                (Ast, span!((2, 8)..(2, 9))),
+                (And, span!((3, 0)..(3, 2))),
+                (Or, span!((3, 3)..(3, 5))),
+                (Not, span!((3, 6)..(3, 7))),
+                (Lt, span!((4, 0)..(4, 1))),
+                (Leq, span!((4, 2)..(4, 4))),
+                (Gt, span!((4, 5)..(4, 6))),
+                (Geq, span!((4, 7)..(4, 9))),
+                (Plus, span!((5, 0)..(5, 1))),
+                (Minus, span!((5, 2)..(5, 3))),
+                (Div, span!((5, 4)..(5, 5))),
+                (Fn, span!((6, 0)..(6, 2))),
+                (Let, span!((6, 3)..(6, 6))),
+                (num(Dec("123"), 123), span!((7, 0)..(7, 3))),
+                (num(Bin("101"), 0b101), span!((7, 4)..(7, 9))),
+                (num(Hex("a0f"), 0xa0f), span!((7, 10)..(7, 15))),
+                (Ident { name: "abcde" }, span!((8, 0)..(8, 5))),
+                (Error(EmptyBinNum { body: "__" }), span!((9, 0)..(9, 4))),
+                (Error(EmptyHexNum { body: "__" }), span!((9, 5)..(9, 9))),
+                (Error(StrayAmp { next: Just(' ') }), span!((10, 0)..(10, 1))),
+                (Error(StrayBar { next: Just(' ') }), span!((10, 2)..(10, 3))),
+                (Error(InvalidChar { c: '♡' }), span!((10, 4)..(10, 5))),
             ],
         );
     }
