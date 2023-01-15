@@ -417,11 +417,11 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
             match self.head {
                 Eof => break,
                 Just(head) => {
-                    body.push(head);
-                    self.mov();
                     if head == '\n' {
                         break;
                     }
+                    body.push(head);
+                    self.mov();
                 }
             }
         }
@@ -765,7 +765,7 @@ abcde
                 (RBrack, span!((0, 4)..(0, 5))),
                 (LCurly, span!((0, 6)..(0, 7))),
                 (RCurly, span!((0, 7)..(0, 8))),
-                (LineComment { body: " xxx\n" }, span!((0, 9)..(1, 0))),
+                (LineComment { body: " xxx" }, span!((0, 9)..(0, 15))),
                 (Comma, span!((1, 0)..(1, 1))),
                 (Semi, span!((1, 2)..(1, 3))),
                 (Colon, span!((1, 4)..(1, 5))),
