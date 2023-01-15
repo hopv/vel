@@ -1,12 +1,8 @@
 # Vel's Logo and Icon
 
-<img src="./logo.svg" height="70" alt="Vel's logo" />
+<img src="./logo.svg" width="100" alt="Vel's logo" />
 
-[svg](./logo.svg), [png](./logo.png)
-
-<img src="./icon.svg" height="120" alt="Vel's icon" />
-
-[svg](./icon.svg), [png](./icon.png)
+<img src="./icon.svg" width="110" alt="Vel's icon" />
 
 Vel's logo and icon were made by Yusuke Matsushita using Inkscape ([logo](./logo.inkscape.svg), [icon](./icon.inkscape.svg)).
 
