@@ -96,7 +96,9 @@ pub enum Token<'a> {
     /// Identifier.
     Ident { name: &'a str },
     /// Line comment, `//...`.
-    Comment { body: &'a str },
+    LineComment { body: &'a str },
+    /// Block comment, `/* ... */` (nestable).
+    BlockComment { body: &'a str },
     /// Whitespace.
     Whitespace { str: &'a str },
     /// Error token.
@@ -133,6 +135,8 @@ pub enum LexErr<'a> {
     StrayAmp { next: OrEof<char> },
     /// Stray `|`.
     StrayBar { next: OrEof<char> },
+    /// Unclosed block comment.
+    UnclosedBlockComment { body: &'a str },
     /// Invalid character.
     InvalidChar { c: char },
 }
@@ -171,7 +175,8 @@ impl Display for Token<'_> {
             Let => write!(f, "let"),
             Num { body, .. } => write!(f, "{}", body),
             Ident { name } => write!(f, "{}", name),
-            Comment { body } => write!(f, "//{}", body),
+            LineComment { body } => write!(f, "//{}", body),
+            BlockComment { body } => write!(f, "/*{}*/", body),
             Whitespace { str } => write!(f, "{}", str),
             Error(e) => write!(f, "{}", e),
         }
@@ -195,6 +200,7 @@ impl Display for LexErr<'_> {
             EmptyHexNum { body } => write!(f, "0x{}", body),
             StrayAmp { .. } => write!(f, "&"),
             StrayBar { .. } => write!(f, "|"),
+            UnclosedBlockComment { body } => write!(f, "/*{}", body),
             InvalidChar { c } => write!(f, "{}", c),
         }
     }
@@ -218,6 +224,7 @@ impl Display for LexErrMsg<'_> {
             EmptyHexNum { body } => write!(f, "Hexadecimal number without digits 0x{}", body),
             StrayAmp { next } => write!(f, "Stray & (before {}), && is expected", next),
             StrayBar { next } => write!(f, "Stray | (before {}), || is expected", next),
+            UnclosedBlockComment { .. } => write!(f, "Unclosed block comment"),
             InvalidChar { c } => write!(f, "Invalid character {}", c),
         }
     }
@@ -396,6 +403,8 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
             Just(head) => match head {
                 // `//`
                 '/' => self.mov().lex_slash2(),
+                // `/*`
+                '*' => self.mov().lex_slash_ast(),
                 _ => Just(Div),
             },
         }
@@ -417,7 +426,54 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
             }
         }
         let body = body.into_str();
-        Just(Comment { body })
+        Just(LineComment { body })
+    }
+
+    /// Lexes the next token, starting with `/*`.
+    fn lex_slash_ast(&mut self) -> OrEof<Token<'arn>> {
+        let mut body = self.new_astring();
+        let mut cnt = 1i64;
+        loop {
+            match self.head {
+                Eof => {
+                    return Just(Error(UnclosedBlockComment {
+                        body: body.into_str(),
+                    }))
+                }
+                Just(head) => {
+                    body.push(head);
+                    self.mov();
+                    match head {
+                        '/' => match self.head {
+                            // `/*`
+                            Just('*') => {
+                                cnt += 1;
+                                body.push('*');
+                                self.mov();
+                            }
+                            _ => {}
+                        },
+                        '*' => match self.head {
+                            // `*/`
+                            Just('/') => {
+                                cnt -= 1;
+                                body.push('/');
+                                self.mov();
+                                if cnt == 0 {
+                                    body.pop();
+                                    body.pop();
+                                    return Just(BlockComment {
+                                        body: body.into_str(),
+                                    });
+                                }
+                            }
+                            _ => {}
+                        },
+                        _ => {}
+                    }
+                }
+            }
+        }
     }
 
     /// Lexes the next token, starting with `&`.
@@ -660,7 +716,7 @@ mod tests {
 
     /// Big text containing all kinds of tokens.
     const BIG: &str = r"() [] {} // xxx
-, ; : . .. ..=
+, ; : . .. ..= /*a/*b*/c*/
 = == ~= *
 && || ~
 < <= > >=
@@ -669,7 +725,7 @@ fn let
 123 0b101 0xa0f
 abcde
 0b__ 0x__
-& | ♡";
+& | ♡ /*abc";
 
     /// Tests that lexing and displaying code retrieves the original code.
     #[test]
@@ -709,13 +765,14 @@ abcde
                 (RBrack, span!((0, 4)..(0, 5))),
                 (LCurly, span!((0, 6)..(0, 7))),
                 (RCurly, span!((0, 7)..(0, 8))),
-                (Comment { body: " xxx\n" }, span!((0, 9)..(1, 0))),
+                (LineComment { body: " xxx\n" }, span!((0, 9)..(1, 0))),
                 (Comma, span!((1, 0)..(1, 1))),
                 (Semi, span!((1, 2)..(1, 3))),
                 (Colon, span!((1, 4)..(1, 5))),
                 (Dot, span!((1, 6)..(1, 7))),
                 (Dot2, span!((1, 8)..(1, 10))),
                 (Dot2Eq, span!((1, 11)..(1, 14))),
+                (BlockComment { body: "a/*b*/c" }, span!((1, 15)..(1, 26))),
                 (Eq, span!((2, 0)..(2, 1))),
                 (Eq2, span!((2, 2)..(2, 4))),
                 (Neq, span!((2, 5)..(2, 7))),
@@ -741,6 +798,10 @@ abcde
                 (Error(StrayAmp { next: Just(' ') }), span!((10, 0)..(10, 1))),
                 (Error(StrayBar { next: Just(' ') }), span!((10, 2)..(10, 3))),
                 (Error(InvalidChar { c: '♡' }), span!((10, 4)..(10, 5))),
+                (
+                    Error(UnclosedBlockComment { body: "abc" }),
+                    span!((10, 6)..(10, 11)),
+                ),
             ],
         );
     }
