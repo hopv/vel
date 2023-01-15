@@ -100,7 +100,11 @@ pub enum Token<'a> {
     /// Block comment, `/* ... */` (nestable).
     BlockComment { body: &'a str },
     /// Whitespace.
-    Whitespace { str: &'a str },
+    Whitespace {
+        str: &'a str,
+        /// The number of newlines `\n`.
+        nl_cnt: usize,
+    },
     /// Error token.
     Error(LexErr<'a>),
 }
@@ -177,7 +181,7 @@ impl Display for Token<'_> {
             Ident { name } => write!(f, "{}", name),
             LineComment { body } => write!(f, "//{}", body),
             BlockComment { body } => write!(f, "/*{}*/", body),
-            Whitespace { str } => write!(f, "{}", str),
+            Whitespace { str, .. } => write!(f, "{}", str),
             Error(e) => write!(f, "{}", e),
         }
     }
@@ -674,6 +678,7 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
     /// Lexes the next token, starting with a whitespace character.
     fn lex_whitespace(&mut self) -> OrEof<Token<'arn>> {
         let mut str = self.new_astring();
+        let mut newline_cnt = 0;
         loop {
             match self.head {
                 Eof => break,
@@ -682,6 +687,9 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
                         // Continues for a whitespace character.
                         str.push(head);
                         self.mov();
+                        if head == '\n' {
+                            newline_cnt += 1;
+                        }
                     } else {
                         break;
                     }
@@ -690,6 +698,7 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
         }
         Just(Whitespace {
             str: str.into_str(),
+            nl_cnt: newline_cnt,
         })
     }
 }
