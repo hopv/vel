@@ -110,7 +110,7 @@ pub enum Token<'a> {
 }
 pub use Token::*;
 
-/// Number literal.
+/// Utility for creating a number literal token.
 #[inline]
 pub fn num<'a>(body: NumLit<'a>, val: i64) -> Token<'a> {
     Num { body, val }
@@ -136,9 +136,15 @@ pub enum LexErr<'a> {
     /// Empty hexadecimal number.
     EmptyHexNum { body: &'a str },
     /// Stray `&`.
-    StrayAmp { next: OrEof<char> },
+    StrayAmp {
+        /// The character after `&`.
+        next: OrEof<char>,
+    },
     /// Stray `|`.
-    StrayBar { next: OrEof<char> },
+    StrayBar {
+        /// The character after `|`.
+        next: OrEof<char>,
+    },
     /// Unclosed block comment.
     UnclosedBlockComment { body: &'a str },
     /// Invalid character.
