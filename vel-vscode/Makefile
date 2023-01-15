@@ -8,8 +8,11 @@ all: install-to-code
 $(veltm).json: $(veltm).yml
 	yq -o=j '.' $(veltm).yml > $(veltm).json
 
+icon.png: ../img/icon.png
+	cp $< $@
+
 # Create Vel's VSIX package
-create-vsix: $(veltm).json
+create-vsix: $(veltm).json icon.png
 	vsce package
 
 # Install Vel's VSIX package in VS Code

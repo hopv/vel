@@ -1,7 +1,6 @@
 # VS Code Extension for Vel
 
-<!-- We can't use an SVG in README.md of a VS Code extension -->
-<p><img src="https://raw.githubusercontent.com/hopv/vel/main/img/logo.png" height="70" alt="Vel's logo" /></p>
+<p><img src="https://raw.githubusercontent.com/hopv/vel/main/img/logo.png" height="70" alt="Vel's icon" /></p>
 
 The VS Code extension for the Vel language.
 

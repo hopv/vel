@@ -12,6 +12,7 @@
     "email": "ysk.m24t@gmail.com",
     "url": "https://github.com/shiatsumat"
   },
+  "icon": "icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/hopv/vel"
@@ -30,6 +31,10 @@
         "extensions": [
           ".vl"
         ],
+        "icon": {
+          "light": "./icon.png",
+          "dark": "./icon.png"
+        },
         "configuration": "./language-configuration.json"
       }
     ],
