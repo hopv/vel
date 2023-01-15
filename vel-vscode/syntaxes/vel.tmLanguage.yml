@@ -8,8 +8,8 @@ patterns:
   - name: comment.line.double-slash.vel
     match: //.*$
   - name: keyword.operator.vel
-    match: # =, ==, ~=, *, &&, ||, ~, <, <=, >, >=, +, -, /
-      (=|==|\~=|\*|&&|\|\||\~|<|<=|>|>=|\+|-|/)
+    match: # ..=, .., ==, ~=, &&, ||, <=, >=, ., :, =, ~, *, <, >, +, -, /
+      (\.\.=|\.\.|==|\~=|&&|\|\||<=|>=|\.|:|=|\~|\*|<|>|\+|-|/)
   - name: invalid.illegal.keyword.operator.vel
     match: (&|\|)
   - name: keyword.control.vel
