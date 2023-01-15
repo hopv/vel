@@ -95,8 +95,6 @@ pub enum Token<'a> {
     Num { body: NumLit<'a>, val: i64 },
     /// Identifier.
     Ident { name: &'a str },
-    /// Doc line comment, `///...`.
-    DocComment { body: &'a str },
     /// Line comment, `//...`.
     Comment { body: &'a str },
     /// Whitespace.
@@ -174,7 +172,6 @@ impl Display for Token<'_> {
             Num { body, .. } => write!(f, "{}", body),
             Ident { name } => write!(f, "{}", name),
             Comment { body } => write!(f, "//{}", body),
-            DocComment { body } => write!(f, "///{}", body),
             Whitespace { str } => write!(f, "{}", str),
             Error(e) => write!(f, "{}", e),
         }
@@ -406,14 +403,6 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
 
     /// Lexes the next token, starting with `//`.
     fn lex_slash2(&mut self) -> OrEof<Token<'arn>> {
-        let is_doc = match self.head {
-            // `///`, a doc line comment
-            Just('/') => {
-                self.mov();
-                true
-            }
-            _ => false,
-        };
         let mut body = self.new_astring();
         loop {
             match self.head {
@@ -428,11 +417,7 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
             }
         }
         let body = body.into_str();
-        Just(if is_doc {
-            DocComment { body }
-        } else {
-            Comment { body }
-        })
+        Just(Comment { body })
     }
 
     /// Lexes the next token, starting with `&`.
@@ -674,8 +659,8 @@ mod tests {
     use std::fmt::Write;
 
     /// Big text containing all kinds of tokens.
-    const BIG: &str = r"() [] {} /// xxx
-, ; : . .. ..= // yy
+    const BIG: &str = r"() [] {} // xxx
+, ; : . .. ..=
 = == ~= *
 && || ~
 < <= > >=
@@ -724,14 +709,13 @@ abcde
                 (RBrack, span!((0, 4)..(0, 5))),
                 (LCurly, span!((0, 6)..(0, 7))),
                 (RCurly, span!((0, 7)..(0, 8))),
-                (DocComment { body: " xxx\n" }, span!((0, 9)..(1, 0))),
+                (Comment { body: " xxx\n" }, span!((0, 9)..(1, 0))),
                 (Comma, span!((1, 0)..(1, 1))),
                 (Semi, span!((1, 2)..(1, 3))),
                 (Colon, span!((1, 4)..(1, 5))),
                 (Dot, span!((1, 6)..(1, 7))),
                 (Dot2, span!((1, 8)..(1, 10))),
                 (Dot2Eq, span!((1, 11)..(1, 14))),
-                (Comment { body: " yy\n" }, span!((1, 15)..(2, 0))),
                 (Eq, span!((2, 0)..(2, 1))),
                 (Eq2, span!((2, 2)..(2, 4))),
                 (Neq, span!((2, 5)..(2, 7))),
