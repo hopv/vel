@@ -1,4 +1,4 @@
-. .. ..= : = == ~= * && || ~ < <= > >= + - / & |
+. .. ..= : -> = == ~= * && || ~ < <= > >= + - / & |
 fn let if else loop while break continue return
 true false 123_456 0b01_10 0xbe_ef 0b__ 0x__ // comment
 abc_def 漢字

@@ -60,6 +60,8 @@ pub enum Token {
     Dot2,
     /// `..=`.
     Dot2Eq,
+    /// `->`.
+    Arrow,
     /// `=`.
     Eq,
     /// `==`.
@@ -186,6 +188,7 @@ impl Display for Token {
             Dot => write!(f, "."),
             Dot2 => write!(f, ".."),
             Dot2Eq => write!(f, "..="),
+            Arrow => write!(f, "->"),
             Eq => write!(f, "="),
             Eq2 => write!(f, "=="),
             Neq => write!(f, "~="),
@@ -337,9 +340,10 @@ impl<I: Iterator<Item = char>> Lexer<I> {
             ':' => Colon,
             '*' => Ast,
             '+' => Plus,
-            '-' => Minus,
             // Starting with `.`
             '.' => return self.mov().lex_dot(),
+            // Starting with `-`
+            '-' => return self.mov().lex_minus(),
             // Starting with `=`
             '=' => return self.mov().lex_eq(),
             // Starting with `~`
@@ -391,6 +395,21 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                     }
                 }
                 _ => Just(Dot),
+            },
+        }
+    }
+
+    /// Lexes the next token, starting with `-`.
+    fn lex_minus(&mut self) -> OrEof<Token> {
+        match self.head {
+            Eof => Just(Minus),
+            Just(head) => match head {
+                // `->`
+                '>' => {
+                    self.mov();
+                    Just(Arrow)
+                }
+                _ => Just(Minus),
             },
         }
     }
@@ -752,7 +771,7 @@ mod tests {
 
     /// Big text containing all kinds of tokens.
     const BIG: &str = r"() [] {} // xxx
-, ; : . .. ..= /*a/*b*/c*/
+, ; : . .. ..= -> /*a/*b*/c*/
 = == ~= *
 && || ~
 < <= > >=
@@ -813,11 +832,12 @@ abcde
                 (Dot, pos(1, 6)..pos(1, 7)),
                 (Dot2, pos(1, 8)..pos(1, 10)),
                 (Dot2Eq, pos(1, 11)..pos(1, 14)),
+                (Arrow, pos(1, 15)..pos(1, 17)),
                 (
                     BlockComment {
                         body: "a/*b*/c".into(),
                     },
-                    pos(1, 15)..pos(1, 26),
+                    pos(1, 18)..pos(1, 29),
                 ),
                 (Eq, pos(2, 0)..pos(2, 1)),
                 (Eq2, pos(2, 2)..pos(2, 4)),
