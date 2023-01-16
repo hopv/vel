@@ -19,9 +19,9 @@ use std::{collections::hash_map::HashMap, hash::Hash};
 #[derive(Debug, Copy, Clone)]
 pub struct Intern<'arn, T: ?Sized> {
     /// Id of the interner that generated this intern.
-    interner_id: usize,
-    /// Id of this intern, given in the ordering of registration.
-    intern_id: usize,
+    from: usize,
+    /// This intern's id, given in the ordering of registration.
+    id: usize,
     /// Reference to the object.
     pub obj: &'arn T,
 }
@@ -40,12 +40,12 @@ impl<T: ?Sized> PartialEq for Intern<'_, T> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         assert!(
-            self.interner_id == other.interner_id,
+            self.from == other.from,
             "Intern::eq called for two interns from different interners: #{} and #{}",
-            self.interner_id,
-            other.interner_id
+            self.from,
+            other.from
         );
-        self.intern_id == other.intern_id
+        self.id == other.id
     }
 }
 impl<T: ?Sized> Eq for Intern<'_, T> {}
@@ -53,7 +53,7 @@ impl<T: ?Sized> Eq for Intern<'_, T> {}
 impl<T: ?Sized> Hash for Intern<'_, T> {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.intern_id.hash(state)
+        self.id.hash(state)
     }
 }
 
@@ -65,12 +65,12 @@ impl<T: ?Sized> PartialOrd for Intern<'_, T> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         assert!(
-            self.interner_id == other.interner_id,
+            self.from == other.from,
             "Intern::partial_cmp called for two interns from different interners: #{} and #{}",
-            self.interner_id,
-            other.interner_id
+            self.from,
+            other.from
         );
-        self.intern_id.partial_cmp(&other.intern_id)
+        self.id.partial_cmp(&other.id)
     }
 }
 
@@ -82,12 +82,12 @@ impl<T: ?Sized> Ord for Intern<'_, T> {
     #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         assert!(
-            self.interner_id == other.interner_id,
+            self.from == other.from,
             "Intern::cmp called for two interns from different interners: #{} and #{}",
-            self.interner_id,
-            other.interner_id
+            self.from,
+            other.from
         );
-        self.intern_id.cmp(&other.intern_id)
+        self.id.cmp(&other.id)
     }
 }
 
@@ -104,7 +104,7 @@ impl<T: ?Sized> std::ops::Deref for Intern<'_, T> {
 #[derive(Debug)]
 pub struct Interner<'arn, T> {
     /// Id of the interner.
-    interner_id: usize,
+    id: usize,
     /// Memoization table.
     memo: HashMap<&'arn T, usize>,
     /// Arena
@@ -118,7 +118,7 @@ impl<'arn, T: Clone + Eq + Hash> Interner<'arn, T> {
         /// Counts the number of the existing interners.
         static CNT: AtomicUsize = AtomicUsize::new(0);
         Self {
-            interner_id: CNT.fetch_add(1, Ordering::Relaxed),
+            id: CNT.fetch_add(1, Ordering::Relaxed),
             memo: HashMap::new(),
             arena,
         }
@@ -128,18 +128,18 @@ impl<'arn, T: Clone + Eq + Hash> Interner<'arn, T> {
     pub fn intern(&mut self, o: &T) -> Intern<'arn, T> {
         let memo = &mut self.memo;
         match memo.get_key_value(o) {
-            Some((&obj, &intern_id)) => Intern {
-                interner_id: self.interner_id,
-                intern_id,
+            Some((&obj, &id)) => Intern {
+                from: self.id,
+                id,
                 obj,
             },
             None => {
-                let intern_id = memo.len();
+                let id = memo.len();
                 let obj = self.arena.alloc_with(|| o.clone());
-                memo.insert(obj, intern_id);
+                memo.insert(obj, id);
                 Intern {
-                    interner_id: self.interner_id,
-                    intern_id,
+                    from: self.id,
+                    id,
                     obj,
                 }
             }
@@ -151,7 +151,7 @@ impl<'arn, T: Clone + Eq + Hash> Interner<'arn, T> {
 /// Every instance of `StrInterner<T>` has a unique `interner_id`.
 pub struct StrInterner<'arn> {
     /// Id of the interner.
-    interner_id: usize,
+    id: usize,
     /// Memoization table.
     memo: HashMap<&'arn str, usize>,
     /// Arena.
@@ -165,7 +165,7 @@ impl<'arn> StrInterner<'arn> {
         /// Counts the number of the existing interners.
         static CNT: AtomicUsize = AtomicUsize::new(0);
         Self {
-            interner_id: CNT.fetch_add(1, Ordering::Relaxed),
+            id: CNT.fetch_add(1, Ordering::Relaxed),
             memo: HashMap::new(),
             arena,
         }
@@ -175,18 +175,18 @@ impl<'arn> StrInterner<'arn> {
     pub fn intern(&mut self, s: &str) -> Intern<'arn, str> {
         let memo = &mut self.memo;
         match memo.get_key_value(s) {
-            Some((&obj, &intern_id)) => Intern {
-                interner_id: self.interner_id,
-                intern_id,
+            Some((&obj, &id)) => Intern {
+                from: self.id,
+                id,
                 obj,
             },
             None => {
-                let intern_id = memo.len();
+                let id = memo.len();
                 let obj = self.arena.alloc_str(s);
-                memo.insert(obj, intern_id);
+                memo.insert(obj, id);
                 Intern {
-                    interner_id: self.interner_id,
-                    intern_id,
+                    from: self.id,
+                    id,
                     obj,
                 }
             }
