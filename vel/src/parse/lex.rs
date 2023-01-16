@@ -92,6 +92,24 @@ pub enum Token {
     Fn,
     /// `let`.
     Let,
+    /// `if`.
+    If,
+    /// `else`.
+    Else,
+    /// `loop`.
+    Loop,
+    /// `while`.
+    While,
+    /// `break`.
+    Break,
+    /// `continue`.
+    Continue,
+    /// `return`.
+    Return,
+    /// `true`.
+    True,
+    /// `false`.
+    False,
     /// Number literal.
     Num { body: NumLit, val: i64 },
     /// Identifier.
@@ -184,6 +202,15 @@ impl Display for Token {
             Div => write!(f, "/"),
             Fn => write!(f, "fn"),
             Let => write!(f, "let"),
+            If => write!(f, "if"),
+            Else => write!(f, "else"),
+            Loop => write!(f, "loop"),
+            While => write!(f, "while"),
+            Break => write!(f, "break"),
+            Continue => write!(f, "continue"),
+            Return => write!(f, "return"),
+            True => write!(f, "true"),
+            False => write!(f, "false"),
             Num { body, .. } => write!(f, "{}", body),
             Ident { name } => write!(f, "{}", name),
             LineComment { body } => write!(f, "//{}", body),
@@ -662,6 +689,15 @@ impl<I: Iterator<Item = char>> Lexer<I> {
         Just(match name.as_str() {
             "fn" => Fn,
             "let" => Let,
+            "if" => If,
+            "else" => Else,
+            "loop" => Loop,
+            "while" => While,
+            "break" => Break,
+            "continue" => Continue,
+            "return" => Return,
+            "true" => True,
+            "false" => False,
             _ => Ident { name },
         })
     }
@@ -722,6 +758,8 @@ mod tests {
 < <= > >=
 + - /
 fn let
+if else loop while break continue return
+true false
 123 0b101 0xa0f
 abcde
 0b__ 0x__
@@ -797,32 +835,41 @@ abcde
                 (Div, pos(5, 4)..pos(5, 5)),
                 (Fn, pos(6, 0)..pos(6, 2)),
                 (Let, pos(6, 3)..pos(6, 6)),
-                (num(Dec("123".into()), 123), pos(7, 0)..pos(7, 3)),
-                (num(Bin("101".into()), 0b101), pos(7, 4)..pos(7, 9)),
-                (num(Hex("a0f".into()), 0xa0f), pos(7, 10)..pos(7, 15)),
+                (If, pos(7, 0)..pos(7, 2)),
+                (Else, pos(7, 3)..pos(7, 7)),
+                (Loop, pos(7, 8)..pos(7, 12)),
+                (While, pos(7, 13)..pos(7, 18)),
+                (Break, pos(7, 19)..pos(7, 24)),
+                (Continue, pos(7, 25)..pos(7, 33)),
+                (Return, pos(7, 34)..pos(7, 40)),
+                (True, pos(8, 0)..pos(8, 4)),
+                (False, pos(8, 5)..pos(8, 10)),
+                (num(Dec("123".into()), 123), pos(9, 0)..pos(9, 3)),
+                (num(Bin("101".into()), 0b101), pos(9, 4)..pos(9, 9)),
+                (num(Hex("a0f".into()), 0xa0f), pos(9, 10)..pos(9, 15)),
                 (
                     Ident {
                         name: "abcde".into(),
                     },
-                    pos(8, 0)..pos(8, 5),
+                    pos(10, 0)..pos(10, 5),
                 ),
                 (
                     Error(EmptyBinNum { body: "__".into() }),
-                    pos(9, 0)..pos(9, 4),
+                    pos(11, 0)..pos(11, 4),
                 ),
                 (
                     Error(EmptyHexNum { body: "__".into() }),
-                    pos(9, 5)..pos(9, 9),
+                    pos(11, 5)..pos(11, 9),
                 ),
-                (Error(StrayAmp { next: Just(' ') }), pos(10, 0)..pos(10, 1)),
-                (Error(StrayBar { next: Just(' ') }), pos(10, 2)..pos(10, 3)),
-                (Error(InvalidChar { c: '♡' }), pos(10, 4)..pos(10, 5)),
+                (Error(StrayAmp { next: Just(' ') }), pos(12, 0)..pos(12, 1)),
+                (Error(StrayBar { next: Just(' ') }), pos(12, 2)..pos(12, 3)),
+                (Error(InvalidChar { c: '♡' }), pos(12, 4)..pos(12, 5)),
                 (
                     Error(UnclosedBlockComment {
                         body: "a/*b".into(),
                         open_cnt: 2,
                     }),
-                    pos(10, 6)..pos(10, 12),
+                    pos(12, 6)..pos(12, 12),
                 ),
             ],
         );

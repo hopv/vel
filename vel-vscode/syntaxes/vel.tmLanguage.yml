@@ -20,8 +20,12 @@ patterns:
       (\.\.=|\.\.|==|\~=|&&|\|\||<=|>=|\.|:|=|\~|\*|<|>|\+|-|/)
   - name: invalid.illegal.keyword.operator.vel
     match: (&|\|)
-  - name: keyword.control.vel
+  - name: keyword.other.vel
     match: \b(fn|let)\b
+  - name: keyword.control.vel
+    match: \b(if|else|loop|while|break|continue|return)\b
+  - name: constant.language.boolean.vel
+    match: \b(true|false)\b
   - name: constant.numeric.integer.decimal.vel
     match: \b[0-9][0-9_]*\b
   - name: constant.numeric.integer.binary.vel
