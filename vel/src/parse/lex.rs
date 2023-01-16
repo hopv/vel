@@ -54,42 +54,60 @@ pub enum Token {
     Semi,
     /// `:`.
     Colon,
+    /// `?`.
+    Quest,
+    /// `!`.
+    Bang,
     /// `.`.
     Dot,
     /// `..`.
     Dot2,
     /// `..=`.
     Dot2Eq,
+    /// `-`.
+    Dash,
     /// `->`.
-    Arrow,
+    DashGt,
+    /// `~`.
+    Tilde,
     /// `=`.
     Eq,
     /// `==`.
     Eq2,
-    /// `~=`.
-    Neq,
+    /// `+`.
+    Plus,
     /// `*`.
-    Ast,
-    /// `&&`.
-    And,
-    /// `||`.
-    Or,
-    /// `~`.
-    Not,
+    Star,
+    /// `#`.
+    Hash,
     /// `<`.
     Lt,
     /// `<=`.
-    Leq,
+    LtEq,
+    /// `<>`.
+    LtGt,
     /// `>`.
     Gt,
     /// `>=`.
-    Geq,
-    /// `+`.
-    Plus,
-    /// `-`.
-    Minus,
+    GtEq,
+    /// `&`.
+    Amp,
+    /// `&&`.
+    Amp2,
+    /// `|`.
+    Bar,
+    /// `||`.
+    Bar2,
     /// `/`.
-    Div,
+    Slash,
+    /// `^`.
+    Hat,
+    /// `@`.
+    At,
+    /// `%`.
+    Percent,
+    /// `$`.
+    Dollar,
     /// `fn`.
     Fn,
     /// `let`.
@@ -156,16 +174,6 @@ pub enum LexErr {
     EmptyBinNum { body: String },
     /// Empty hexadecimal number.
     EmptyHexNum { body: String },
-    /// Stray `&`.
-    StrayAmp {
-        /// The character after `&`.
-        next: OrEof<char>,
-    },
-    /// Stray `|`.
-    StrayBar {
-        /// The character after `|`.
-        next: OrEof<char>,
-    },
     /// Unclosed block comment.
     UnclosedBlockComment { body: String, open_cnt: usize },
     /// Invalid character.
@@ -185,24 +193,33 @@ impl Display for Token {
             Comma => write!(f, ","),
             Semi => write!(f, ";"),
             Colon => write!(f, ":"),
+            Quest => write!(f, "?"),
+            Bang => write!(f, "!"),
             Dot => write!(f, "."),
             Dot2 => write!(f, ".."),
             Dot2Eq => write!(f, "..="),
-            Arrow => write!(f, "->"),
+            Dash => write!(f, "-"),
+            DashGt => write!(f, "->"),
+            Tilde => write!(f, "~"),
             Eq => write!(f, "="),
             Eq2 => write!(f, "=="),
-            Neq => write!(f, "~="),
-            Ast => write!(f, "*"),
-            And => write!(f, "&&"),
-            Or => write!(f, "||"),
-            Not => write!(f, "~"),
-            Lt => write!(f, "<"),
-            Leq => write!(f, "<="),
-            Gt => write!(f, ">"),
-            Geq => write!(f, ">="),
             Plus => write!(f, "+"),
-            Minus => write!(f, "-"),
-            Div => write!(f, "/"),
+            Star => write!(f, "*"),
+            Hash => write!(f, "#"),
+            Lt => write!(f, "<"),
+            LtEq => write!(f, "<="),
+            LtGt => write!(f, "<>"),
+            Gt => write!(f, ">"),
+            GtEq => write!(f, ">="),
+            Amp => write!(f, "&"),
+            Amp2 => write!(f, "&&"),
+            Bar => write!(f, "|"),
+            Bar2 => write!(f, "||"),
+            Slash => write!(f, "/"),
+            Hat => write!(f, "^"),
+            At => write!(f, "@"),
+            Percent => write!(f, "%"),
+            Dollar => write!(f, "$"),
             Fn => write!(f, "fn"),
             Let => write!(f, "let"),
             If => write!(f, "if"),
@@ -239,8 +256,6 @@ impl Display for LexErr {
         match self {
             EmptyBinNum { body } => write!(f, "0b{}", body),
             EmptyHexNum { body } => write!(f, "0x{}", body),
-            StrayAmp { .. } => write!(f, "&"),
-            StrayBar { .. } => write!(f, "|"),
             UnclosedBlockComment { body, .. } => write!(f, "/*{}", body),
             InvalidChar { c } => write!(f, "{}", c),
         }
@@ -263,8 +278,6 @@ impl Display for LexErrMsg {
         match &self.0 {
             EmptyBinNum { body } => write!(f, "Binary number without digits 0b{}", body),
             EmptyHexNum { body } => write!(f, "Hexadecimal number without digits 0x{}", body),
-            StrayAmp { next } => write!(f, "Stray & (before {}), && is expected", next),
-            StrayBar { next } => write!(f, "Stray | (before {}), || is expected", next),
             UnclosedBlockComment { open_cnt, .. } => {
                 write!(
                     f,
@@ -365,10 +378,6 @@ impl<I: Iterator<Item = char>> Lexer<I> {
             ';' => self.mov_just(Semi),
             // `:`
             ':' => self.mov_just(Colon),
-            // `*`
-            '*' => self.mov_just(Ast),
-            // `+`
-            '+' => self.mov_just(Plus),
             // `.`
             '.' => match self.mov_head() {
                 // `..`
@@ -379,23 +388,55 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                 },
                 _ => Just(Dot),
             },
+            // `?`
+            '?' => self.mov_just(Quest),
+            // `!`
+            '!' => self.mov_just(Bang),
             // `-`
             '-' => match self.mov_head() {
                 // `->`
-                Just('>') => self.mov_just(Arrow),
-                _ => Just(Minus),
+                Just('>') => self.mov_just(DashGt),
+                _ => Just(Dash),
             },
+            // `~`
+            '~' => self.mov_just(Tilde),
+            // `+`
+            '+' => self.mov_just(Plus),
             // `=`
             '=' => match self.mov_head() {
                 // `==`
                 Just('=') => self.mov_just(Eq2),
                 _ => Just(Eq),
             },
-            // `~`
-            '~' => match self.mov_head() {
-                // `~=`
-                Just('=') => self.mov_just(Neq),
-                _ => Just(Not),
+            // `*`
+            '*' => self.mov_just(Star),
+            // `#`
+            '#' => self.mov_just(Hash),
+            // `<`
+            '<' => match self.mov_head() {
+                // `<=`
+                Just('=') => self.mov_just(LtEq),
+                // `<>`
+                Just('>') => self.mov_just(LtGt),
+                _ => Just(Lt),
+            },
+            // `>`
+            '>' => match self.mov_head() {
+                // `>=`
+                Just('=') => self.mov_just(GtEq),
+                _ => Just(Gt),
+            },
+            // `&`
+            '&' => match self.mov_head() {
+                // `&&`
+                Just('&') => self.mov_just(Amp2),
+                _ => Just(Amp),
+            },
+            // `|`
+            '|' => match self.mov_head() {
+                // `||`
+                Just('|') => self.mov_just(Bar2),
+                _ => Just(Bar),
             },
             // `/`
             '/' => match self.mov_head() {
@@ -403,32 +444,16 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                 Just('/') => self.mov_and().lex_slash2(),
                 // `/*`
                 Just('*') => self.mov_and().lex_slash_ast(),
-                _ => Just(Div),
+                _ => Just(Slash),
             },
-            // `&`
-            '&' => match self.mov_head() {
-                // `&&`
-                Just('&') => self.mov_just(And),
-                next => Just(Error(StrayAmp { next })),
-            },
-            // `|`
-            '|' => match self.mov_head() {
-                // `||`
-                Just('|') => self.mov_just(Or),
-                next => Just(Error(StrayBar { next })),
-            },
-            // `<`
-            '<' => match self.mov_head() {
-                // `<=`
-                Just('=') => self.mov_just(Leq),
-                _ => Just(Lt),
-            },
-            // `>`
-            '>' => match self.mov_head() {
-                // `>=`
-                Just('=') => self.mov_just(Geq),
-                _ => Just(Gt),
-            },
+            // `^`
+            '^' => self.mov_just(Hat),
+            // `@`
+            '@' => self.mov_just(At),
+            // `%`
+            '%' => self.mov_just(Percent),
+            // `$`
+            '$' => self.mov_just(Dollar),
             // `0`
             '0' => return self.mov_and().lex_0(),
             // Number, starting with a nonzero digit, `1`-`9`
@@ -673,19 +698,19 @@ mod tests {
     use std::fmt::Write;
 
     /// Big text containing all kinds of tokens.
-    const BIG: &str = r"() [] {} // xxx
-, ; : . .. ..= -> /*a/*b*/c*/
-= == ~= *
-&& || ~
-< <= > >=
-+ - /
+    const BIG: &str = r"/* a /* b */ c */ // xxx
+() [] {}
+, ; : . .. ..= ? !
+- -> ~ = == + * #
+< <= <> > >=
+& && | || / ^ @ % $
 fn let
 if else loop while break continue return
 true false
 123 0b101 0xa0f
 abcde
 0b__ 0x__
-& | ♡ /*a/*b";
+♡ /*a/*b";
 
     /// Tests that lexing and displaying code retrieves the original code.
     #[test]
@@ -717,45 +742,54 @@ abcde
         test_lex(
             BIG,
             vec![
-                (LParen, pos(0, 0)..pos(0, 1)),
-                (RParen, pos(0, 1)..pos(0, 2)),
-                (LBrack, pos(0, 3)..pos(0, 4)),
-                (RBrack, pos(0, 4)..pos(0, 5)),
-                (LCurly, pos(0, 6)..pos(0, 7)),
-                (RCurly, pos(0, 7)..pos(0, 8)),
+                (
+                    BlockComment {
+                        body: " a /* b */ c ".into(),
+                    },
+                    pos(0, 0)..pos(0, 17),
+                ),
                 (
                     LineComment {
                         body: " xxx".into(),
                     },
-                    pos(0, 9)..pos(0, 15),
+                    pos(0, 18)..pos(0, 24),
                 ),
-                (Comma, pos(1, 0)..pos(1, 1)),
-                (Semi, pos(1, 2)..pos(1, 3)),
-                (Colon, pos(1, 4)..pos(1, 5)),
-                (Dot, pos(1, 6)..pos(1, 7)),
-                (Dot2, pos(1, 8)..pos(1, 10)),
-                (Dot2Eq, pos(1, 11)..pos(1, 14)),
-                (Arrow, pos(1, 15)..pos(1, 17)),
-                (
-                    BlockComment {
-                        body: "a/*b*/c".into(),
-                    },
-                    pos(1, 18)..pos(1, 29),
-                ),
-                (Eq, pos(2, 0)..pos(2, 1)),
-                (Eq2, pos(2, 2)..pos(2, 4)),
-                (Neq, pos(2, 5)..pos(2, 7)),
-                (Ast, pos(2, 8)..pos(2, 9)),
-                (And, pos(3, 0)..pos(3, 2)),
-                (Or, pos(3, 3)..pos(3, 5)),
-                (Not, pos(3, 6)..pos(3, 7)),
+                (LParen, pos(1, 0)..pos(1, 1)),
+                (RParen, pos(1, 1)..pos(1, 2)),
+                (LBrack, pos(1, 3)..pos(1, 4)),
+                (RBrack, pos(1, 4)..pos(1, 5)),
+                (LCurly, pos(1, 6)..pos(1, 7)),
+                (RCurly, pos(1, 7)..pos(1, 8)),
+                (Comma, pos(2, 0)..pos(2, 1)),
+                (Semi, pos(2, 2)..pos(2, 3)),
+                (Colon, pos(2, 4)..pos(2, 5)),
+                (Dot, pos(2, 6)..pos(2, 7)),
+                (Dot2, pos(2, 8)..pos(2, 10)),
+                (Dot2Eq, pos(2, 11)..pos(2, 14)),
+                (Quest, pos(2, 15)..pos(2, 16)),
+                (Bang, pos(2, 17)..pos(2, 18)),
+                (Dash, pos(3, 0)..pos(3, 1)),
+                (DashGt, pos(3, 2)..pos(3, 4)),
+                (Tilde, pos(3, 5)..pos(3, 6)),
+                (Eq, pos(3, 7)..pos(3, 8)),
+                (Eq2, pos(3, 9)..pos(3, 11)),
+                (Plus, pos(3, 12)..pos(3, 13)),
+                (Star, pos(3, 14)..pos(3, 15)),
+                (Hash, pos(3, 16)..pos(3, 17)),
                 (Lt, pos(4, 0)..pos(4, 1)),
-                (Leq, pos(4, 2)..pos(4, 4)),
-                (Gt, pos(4, 5)..pos(4, 6)),
-                (Geq, pos(4, 7)..pos(4, 9)),
-                (Plus, pos(5, 0)..pos(5, 1)),
-                (Minus, pos(5, 2)..pos(5, 3)),
-                (Div, pos(5, 4)..pos(5, 5)),
+                (LtEq, pos(4, 2)..pos(4, 4)),
+                (LtGt, pos(4, 5)..pos(4, 7)),
+                (Gt, pos(4, 8)..pos(4, 9)),
+                (GtEq, pos(4, 10)..pos(4, 12)),
+                (Amp, pos(5, 0)..pos(5, 1)),
+                (Amp2, pos(5, 2)..pos(5, 4)),
+                (Bar, pos(5, 5)..pos(5, 6)),
+                (Bar2, pos(5, 7)..pos(5, 9)),
+                (Slash, pos(5, 10)..pos(5, 11)),
+                (Hat, pos(5, 12)..pos(5, 13)),
+                (At, pos(5, 14)..pos(5, 15)),
+                (Percent, pos(5, 16)..pos(5, 17)),
+                (Dollar, pos(5, 18)..pos(5, 19)),
                 (Fn, pos(6, 0)..pos(6, 2)),
                 (Let, pos(6, 3)..pos(6, 6)),
                 (If, pos(7, 0)..pos(7, 2)),
@@ -784,15 +818,13 @@ abcde
                     Error(EmptyHexNum { body: "__".into() }),
                     pos(11, 5)..pos(11, 9),
                 ),
-                (Error(StrayAmp { next: Just(' ') }), pos(12, 0)..pos(12, 1)),
-                (Error(StrayBar { next: Just(' ') }), pos(12, 2)..pos(12, 3)),
-                (Error(InvalidChar { c: '♡' }), pos(12, 4)..pos(12, 5)),
+                (Error(InvalidChar { c: '♡' }), pos(12, 0)..pos(12, 1)),
                 (
                     Error(UnclosedBlockComment {
                         body: "a/*b".into(),
                         open_cnt: 2,
                     }),
-                    pos(12, 6)..pos(12, 12),
+                    pos(12, 2)..pos(12, 8),
                 ),
             ],
         );

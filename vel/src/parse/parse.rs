@@ -122,7 +122,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
             _ => todo!(),
         };
         match self.mov().0 {
-            Token::Arrow => {}
+            Token::DashGt => {}
             _ => todo!(),
         };
         match self.mov().0 {
