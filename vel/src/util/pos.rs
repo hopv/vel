@@ -1,3 +1,5 @@
+//! Position and span utilities.
+
 use std::fmt::Display;
 
 /// 2D position in a string.

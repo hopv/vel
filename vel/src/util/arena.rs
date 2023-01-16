@@ -1,3 +1,5 @@
+//! Arena utilities, wrapping bumpalo.
+
 /// Arena for allocation.
 pub type Arena = bumpalo::Bump;
 

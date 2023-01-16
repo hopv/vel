@@ -1,3 +1,5 @@
+//! Vel lexer.
+
 use crate::util::pos::{span, Pos, Span};
 use std::fmt::{Display, Formatter, Result};
 

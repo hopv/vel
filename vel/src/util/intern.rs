@@ -1,3 +1,5 @@
+//! Interning (a.k.a. hash consing).
+
 use crate::util::arena::Arena;
 use std::fmt::{Debug, Display};
 use std::{collections::hash_map::HashMap, hash::Hash};
