@@ -1,6 +1,6 @@
 //! Vel lexer.
 
-use crate::util::pos::{span, Pos, Span};
+use crate::util::pos::{Pos, Span};
 use std::fmt::{Display, Formatter, Result};
 
 /// Something or EOF.
@@ -702,7 +702,7 @@ impl<I: Iterator<Item = char>> Iterator for Lexer<I> {
             Eof => None,
             Just(tok) => {
                 let to = self.pos;
-                Some((tok, span(from, to)))
+                Some((tok, from..to))
             }
         }
     }
@@ -711,7 +711,7 @@ impl<I: Iterator<Item = char>> Iterator for Lexer<I> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{span, util::pos::pos};
+    use crate::util::pos::pos;
     use std::fmt::Write;
 
     /// Big text containing all kinds of tokens.
@@ -757,72 +757,72 @@ abcde
         test_lex(
             BIG,
             vec![
-                (LParen, span!((0, 0)..(0, 1))),
-                (RParen, span!((0, 1)..(0, 2))),
-                (LBrack, span!((0, 3)..(0, 4))),
-                (RBrack, span!((0, 4)..(0, 5))),
-                (LCurly, span!((0, 6)..(0, 7))),
-                (RCurly, span!((0, 7)..(0, 8))),
+                (LParen, pos(0, 0)..pos(0, 1)),
+                (RParen, pos(0, 1)..pos(0, 2)),
+                (LBrack, pos(0, 3)..pos(0, 4)),
+                (RBrack, pos(0, 4)..pos(0, 5)),
+                (LCurly, pos(0, 6)..pos(0, 7)),
+                (RCurly, pos(0, 7)..pos(0, 8)),
                 (
                     LineComment {
                         body: " xxx".into(),
                     },
-                    span!((0, 9)..(0, 15)),
+                    pos(0, 9)..pos(0, 15),
                 ),
-                (Comma, span!((1, 0)..(1, 1))),
-                (Semi, span!((1, 2)..(1, 3))),
-                (Colon, span!((1, 4)..(1, 5))),
-                (Dot, span!((1, 6)..(1, 7))),
-                (Dot2, span!((1, 8)..(1, 10))),
-                (Dot2Eq, span!((1, 11)..(1, 14))),
+                (Comma, pos(1, 0)..pos(1, 1)),
+                (Semi, pos(1, 2)..pos(1, 3)),
+                (Colon, pos(1, 4)..pos(1, 5)),
+                (Dot, pos(1, 6)..pos(1, 7)),
+                (Dot2, pos(1, 8)..pos(1, 10)),
+                (Dot2Eq, pos(1, 11)..pos(1, 14)),
                 (
                     BlockComment {
                         body: "a/*b*/c".into(),
                     },
-                    span!((1, 15)..(1, 26)),
+                    pos(1, 15)..pos(1, 26),
                 ),
-                (Eq, span!((2, 0)..(2, 1))),
-                (Eq2, span!((2, 2)..(2, 4))),
-                (Neq, span!((2, 5)..(2, 7))),
-                (Ast, span!((2, 8)..(2, 9))),
-                (And, span!((3, 0)..(3, 2))),
-                (Or, span!((3, 3)..(3, 5))),
-                (Not, span!((3, 6)..(3, 7))),
-                (Lt, span!((4, 0)..(4, 1))),
-                (Leq, span!((4, 2)..(4, 4))),
-                (Gt, span!((4, 5)..(4, 6))),
-                (Geq, span!((4, 7)..(4, 9))),
-                (Plus, span!((5, 0)..(5, 1))),
-                (Minus, span!((5, 2)..(5, 3))),
-                (Div, span!((5, 4)..(5, 5))),
-                (Fn, span!((6, 0)..(6, 2))),
-                (Let, span!((6, 3)..(6, 6))),
-                (num(Dec("123".into()), 123), span!((7, 0)..(7, 3))),
-                (num(Bin("101".into()), 0b101), span!((7, 4)..(7, 9))),
-                (num(Hex("a0f".into()), 0xa0f), span!((7, 10)..(7, 15))),
+                (Eq, pos(2, 0)..pos(2, 1)),
+                (Eq2, pos(2, 2)..pos(2, 4)),
+                (Neq, pos(2, 5)..pos(2, 7)),
+                (Ast, pos(2, 8)..pos(2, 9)),
+                (And, pos(3, 0)..pos(3, 2)),
+                (Or, pos(3, 3)..pos(3, 5)),
+                (Not, pos(3, 6)..pos(3, 7)),
+                (Lt, pos(4, 0)..pos(4, 1)),
+                (Leq, pos(4, 2)..pos(4, 4)),
+                (Gt, pos(4, 5)..pos(4, 6)),
+                (Geq, pos(4, 7)..pos(4, 9)),
+                (Plus, pos(5, 0)..pos(5, 1)),
+                (Minus, pos(5, 2)..pos(5, 3)),
+                (Div, pos(5, 4)..pos(5, 5)),
+                (Fn, pos(6, 0)..pos(6, 2)),
+                (Let, pos(6, 3)..pos(6, 6)),
+                (num(Dec("123".into()), 123), pos(7, 0)..pos(7, 3)),
+                (num(Bin("101".into()), 0b101), pos(7, 4)..pos(7, 9)),
+                (num(Hex("a0f".into()), 0xa0f), pos(7, 10)..pos(7, 15)),
                 (
                     Ident {
                         name: "abcde".into(),
                     },
-                    span!((8, 0)..(8, 5)),
+                    pos(8, 0)..pos(8, 5),
                 ),
                 (
                     Error(EmptyBinNum { body: "__".into() }),
-                    span!((9, 0)..(9, 4)),
+                    pos(9, 0)..pos(9, 4),
                 ),
                 (
                     Error(EmptyHexNum { body: "__".into() }),
-                    span!((9, 5)..(9, 9)),
+                    pos(9, 5)..pos(9, 9),
                 ),
-                (Error(StrayAmp { next: Just(' ') }), span!((10, 0)..(10, 1))),
-                (Error(StrayBar { next: Just(' ') }), span!((10, 2)..(10, 3))),
-                (Error(InvalidChar { c: '♡' }), span!((10, 4)..(10, 5))),
+                (Error(StrayAmp { next: Just(' ') }), pos(10, 0)..pos(10, 1)),
+                (Error(StrayBar { next: Just(' ') }), pos(10, 2)..pos(10, 3)),
+                (Error(InvalidChar { c: '♡' }), pos(10, 4)..pos(10, 5)),
                 (
                     Error(UnclosedBlockComment {
                         body: "a/*b".into(),
                         open_cnt: 2,
                     }),
-                    span!((10, 6)..(10, 12)),
+                    pos(10, 6)..pos(10, 12),
                 ),
             ],
         );
@@ -838,13 +838,13 @@ abcde
                     Ident {
                         name: "ab1_cde".into(),
                     },
-                    span!((0, 0)..(0, 7)),
+                    pos(0, 0)..pos(0, 7),
                 ),
                 (
                     Ident {
                         name: "漢字".into(),
                     },
-                    span!((0, 8)..(0, 10)),
+                    pos(0, 8)..pos(0, 10),
                 ),
             ],
         )
@@ -858,19 +858,19 @@ abcde
 0b0101_1010
 0xab_01_EF",
             vec![
-                (num(Dec("0".into()), 0), span!((0, 0)..(0, 1))),
-                (num(Dec("0_123".into()), 123), span!((0, 2)..(0, 7))),
+                (num(Dec("0".into()), 0), pos(0, 0)..pos(0, 1)),
+                (num(Dec("0_123".into()), 123), pos(0, 2)..pos(0, 7)),
                 (
                     num(Dec("1_234_567_890".into()), 1_234_567_890),
-                    span!((0, 8)..(0, 21)),
+                    pos(0, 8)..pos(0, 21),
                 ),
                 (
                     num(Bin("0101_1010".into()), 0b0101_1010),
-                    span!((1, 0)..(1, 11)),
+                    pos(1, 0)..pos(1, 11),
                 ),
                 (
                     num(Hex("ab_01_EF".into()), 0xab_01_EF),
-                    span!((2, 0)..(2, 10)),
+                    pos(2, 0)..pos(2, 10),
                 ),
             ],
         )

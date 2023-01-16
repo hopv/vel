@@ -1,6 +1,7 @@
 //! Position and span utilities.
 
 use std::fmt::Display;
+use std::ops::Range;
 
 /// 2D position in a string.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -53,31 +54,8 @@ impl Pos {
     }
 }
 
-/// 2D span in a string.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct Span {
-    /// The starting position.
-    pub from: Pos,
-    /// The ending position.
-    pub to: Pos,
-}
-
-impl Display for Span {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}..{}", self.from, self.to)
-    }
-}
-
-/// Makes a span.
-#[inline]
-pub fn span(from: Pos, to: Pos) -> Span {
-    Span { from, to }
-}
-
-/// Utility for making a span.
-#[macro_export]
-macro_rules! span {
-    (($from_line:expr , $from_col:expr) .. ($to_line:expr , $to_col:expr)) => {
-        span(pos($from_line, $from_col), pos($to_line, $to_col))
-    };
-}
+/// 2D continuous span in a string.
+///
+/// It is an alias of `Range<Pos>`,
+/// so it can be constructed by `p..q` for `p, q: Pos`.
+pub type Span = Range<Pos>;
