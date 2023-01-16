@@ -1,4 +1,3 @@
-use crate::util::arena::{AString, AStringExt, Arena, ArenaExt};
 use crate::util::pos::{span, Pos, Span};
 use std::fmt::{Display, Formatter, Result};
 
@@ -22,7 +21,7 @@ impl<T> From<Option<T>> for OrEof<T> {
 }
 
 impl<T: Display> Display for OrEof<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
             Just(v) => write!(f, "{}", v),
             Eof => write!(f, "EOF"),
@@ -33,8 +32,8 @@ impl<T: Display> Display for OrEof<T> {
 /// Vel token.
 ///
 /// Has the information to retrieve the original source code.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum Token<'a> {
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum Token {
     /// `(`.
     LParen,
     /// `)`.
@@ -92,49 +91,49 @@ pub enum Token<'a> {
     /// `let`.
     Let,
     /// Number literal.
-    Num { body: NumLit<'a>, val: i64 },
+    Num { body: NumLit, val: i64 },
     /// Identifier.
-    Ident { name: &'a str },
+    Ident { name: String },
     /// Line comment, `//...`.
-    LineComment { body: &'a str },
+    LineComment { body: String },
     /// Block comment, `/* ... */` (nestable).
-    BlockComment { body: &'a str },
+    BlockComment { body: String },
     /// Whitespace.
     Whitespace {
-        str: &'a str,
+        str: String,
         /// The number of newlines `\n`.
         nl_cnt: usize,
     },
     /// Error token.
-    Error(LexErr<'a>),
+    Error(LexErr),
 }
 pub use Token::*;
 
 /// Utility for creating a number literal token.
 #[inline]
-pub fn num<'a>(body: NumLit<'a>, val: i64) -> Token<'a> {
+pub fn num(body: NumLit, val: i64) -> Token {
     Num { body, val }
 }
 
 /// Number literal.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum NumLit<'a> {
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum NumLit {
     /// Decimal.
-    Dec(&'a str),
+    Dec(String),
     /// Binary.
-    Bin(&'a str),
+    Bin(String),
     /// Hexadecimal.
-    Hex(&'a str),
+    Hex(String),
 }
 pub use NumLit::*;
 
 /// Vel lexing error.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum LexErr<'a> {
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum LexErr {
     /// Empty binary number.
-    EmptyBinNum { body: &'a str },
+    EmptyBinNum { body: String },
     /// Empty hexadecimal number.
-    EmptyHexNum { body: &'a str },
+    EmptyHexNum { body: String },
     /// Stray `&`.
     StrayAmp {
         /// The character after `&`.
@@ -146,15 +145,15 @@ pub enum LexErr<'a> {
         next: OrEof<char>,
     },
     /// Unclosed block comment.
-    UnclosedBlockComment { body: &'a str },
+    UnclosedBlockComment { body: String },
     /// Invalid character.
     InvalidChar { c: char },
 }
 pub use LexErr::*;
 
-impl Display for Token<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match *self {
+impl Display for Token {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
             LParen => write!(f, "("),
             RParen => write!(f, ")"),
             LBrack => write!(f, "["),
@@ -193,9 +192,9 @@ impl Display for Token<'_> {
     }
 }
 
-impl Display for NumLit<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match *self {
+impl Display for NumLit {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
             Dec(s) => write!(f, "{}", s),
             Bin(s) => write!(f, "0b{}", s),
             Hex(s) => write!(f, "0x{}", s),
@@ -203,9 +202,9 @@ impl Display for NumLit<'_> {
     }
 }
 
-impl Display for LexErr<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match *self {
+impl Display for LexErr {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
             EmptyBinNum { body } => write!(f, "0b{}", body),
             EmptyHexNum { body } => write!(f, "0x{}", body),
             StrayAmp { .. } => write!(f, "&"),
@@ -216,20 +215,20 @@ impl Display for LexErr<'_> {
     }
 }
 
-impl<'a> LexErr<'a> {
+impl LexErr {
     /// Displays the error message.
     #[inline]
-    pub fn msg(self) -> LexErrMsg<'a> {
+    pub fn msg(self) -> LexErrMsg {
         LexErrMsg(self)
     }
 }
 
 /// Displays the error message for LexErr.
-pub struct LexErrMsg<'a>(LexErr<'a>);
+pub struct LexErrMsg(LexErr);
 
-impl Display for LexErrMsg<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self.0 {
+impl Display for LexErrMsg {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match &self.0 {
             EmptyBinNum { body } => write!(f, "Binary number without digits 0b{}", body),
             EmptyHexNum { body } => write!(f, "Hexadecimal number without digits 0x{}", body),
             StrayAmp { next } => write!(f, "Stray & (before {}), && is expected", next),
@@ -242,37 +241,26 @@ impl Display for LexErrMsg<'_> {
 
 /// Lexer.
 /// Works in linear time, with only one lookahead.
-pub struct Lexer<'arn, I> {
+pub struct Lexer<I> {
     /// Current head character.
     head: OrEof<char>,
     /// Current position.
     pos: Pos,
     /// Input iterator.
     input: I,
-    /// Arena.
-    arn: &'arn Arena,
 }
 
 /// Creates a lexer.
 #[inline]
-pub fn lexer<'arn, I: Iterator<Item = char>>(
-    pos: Pos,
-    input: I,
-    arn: &'arn Arena,
-) -> Lexer<'arn, I> {
-    Lexer::new(pos, input, arn)
+pub fn lexer<I: Iterator<Item = char>>(pos: Pos, input: I) -> Lexer<I> {
+    Lexer::new(pos, input)
 }
 
-impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
+impl<I: Iterator<Item = char>> Lexer<I> {
     /// Creates a lexer.
-    pub fn new(pos: Pos, mut input: I, arn: &'arn Arena) -> Self {
+    pub fn new(pos: Pos, mut input: I) -> Self {
         let head = input.next().into();
-        Self {
-            head,
-            pos,
-            input,
-            arn,
-        }
+        Self { head, pos, input }
     }
 
     /// Gets the current position.
@@ -294,13 +282,8 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
         self
     }
 
-    /// Creates a new `AString`.
-    fn new_astring(&self) -> AString<'arn> {
-        self.arn.new_astring()
-    }
-
     /// Lexes the next token.
-    pub fn lex(&mut self) -> OrEof<Token<'arn>> {
+    pub fn lex(&mut self) -> OrEof<Token> {
         let head = match self.head {
             Eof => return Eof,
             Just(c) => c,
@@ -352,7 +335,7 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
     }
 
     /// Lexes the next token, starting with `.`.
-    fn lex_dot(&mut self) -> OrEof<Token<'arn>> {
+    fn lex_dot(&mut self) -> OrEof<Token> {
         match self.head {
             Eof => Just(Dot),
             Just(head) => match head {
@@ -377,7 +360,7 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
     }
 
     /// Lexes the next token, starting with `=`.
-    fn lex_eq(&mut self) -> OrEof<Token<'arn>> {
+    fn lex_eq(&mut self) -> OrEof<Token> {
         match self.head {
             Eof => Just(Eq),
             Just(head) => match head {
@@ -392,7 +375,7 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
     }
 
     /// Lexes, starting with `~`.
-    fn lex_tilde(&mut self) -> OrEof<Token<'arn>> {
+    fn lex_tilde(&mut self) -> OrEof<Token> {
         match self.head {
             Eof => Just(Not),
             Just(head) => match head {
@@ -407,7 +390,7 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
     }
 
     /// Lexes the next token, starting with `/`.
-    fn lex_slash(&mut self) -> OrEof<Token<'arn>> {
+    fn lex_slash(&mut self) -> OrEof<Token> {
         match self.head {
             Eof => Just(Div),
             Just(head) => match head {
@@ -421,8 +404,8 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
     }
 
     /// Lexes the next token, starting with `//`.
-    fn lex_slash2(&mut self) -> OrEof<Token<'arn>> {
-        let mut body = self.new_astring();
+    fn lex_slash2(&mut self) -> OrEof<Token> {
+        let mut body = String::new();
         loop {
             match self.head {
                 Eof => break,
@@ -435,21 +418,16 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
                 }
             }
         }
-        let body = body.into_str();
         Just(LineComment { body })
     }
 
     /// Lexes the next token, starting with `/*`.
-    fn lex_slash_ast(&mut self) -> OrEof<Token<'arn>> {
-        let mut body = self.new_astring();
+    fn lex_slash_ast(&mut self) -> OrEof<Token> {
+        let mut body = String::new();
         let mut cnt = 1i64;
         loop {
             match self.head {
-                Eof => {
-                    return Just(Error(UnclosedBlockComment {
-                        body: body.into_str(),
-                    }))
-                }
+                Eof => return Just(Error(UnclosedBlockComment { body })),
                 Just(head) => {
                     body.push(head);
                     self.mov();
@@ -472,9 +450,7 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
                                 if cnt == 0 {
                                     body.pop();
                                     body.pop();
-                                    return Just(BlockComment {
-                                        body: body.into_str(),
-                                    });
+                                    return Just(BlockComment { body });
                                 }
                             }
                             _ => {}
@@ -487,7 +463,7 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
     }
 
     /// Lexes the next token, starting with `&`.
-    fn lex_amp(&mut self) -> OrEof<Token<'arn>> {
+    fn lex_amp(&mut self) -> OrEof<Token> {
         match self.head {
             Eof => Just(Error(StrayAmp { next: Eof })),
             Just(head) => match head {
@@ -502,7 +478,7 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
     }
 
     /// Lexes the next token, starting with `|`.
-    fn lex_bar(&mut self) -> OrEof<Token<'arn>> {
+    fn lex_bar(&mut self) -> OrEof<Token> {
         match self.head {
             Eof => Just(Error(StrayBar { next: Eof })),
             Just(head) => match head {
@@ -517,7 +493,7 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
     }
 
     /// Lexes the next token, starting with `<`.
-    fn lex_lt(&mut self) -> OrEof<Token<'arn>> {
+    fn lex_lt(&mut self) -> OrEof<Token> {
         match self.head {
             Eof => Just(Lt),
             Just(head) => match head {
@@ -532,7 +508,7 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
     }
 
     /// Lexes the next token, starting with `>`.
-    fn lex_gt(&mut self) -> OrEof<Token<'arn>> {
+    fn lex_gt(&mut self) -> OrEof<Token> {
         match self.head {
             Eof => Just(Gt),
             Just(head) => match head {
@@ -547,7 +523,7 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
     }
 
     /// Lexes the next token, starting with zero.
-    fn lex_0(&mut self) -> OrEof<Token<'arn>> {
+    fn lex_0(&mut self) -> OrEof<Token> {
         match self.head {
             Eof => self.lex_dec_num(true),
             Just(head) => match head {
@@ -562,8 +538,8 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
     }
 
     /// Lexes the next number literal token, starting with `0b`.
-    fn lex_0b(&mut self) -> OrEof<Token<'arn>> {
-        let mut body = self.new_astring();
+    fn lex_0b(&mut self) -> OrEof<Token> {
+        let mut body = String::new();
         let mut val = 0i64;
         let mut has_digit = false;
         loop {
@@ -586,7 +562,7 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
                 },
             }
         }
-        let body = body.into_str();
+        let body = body;
         Just(if !has_digit {
             Error(EmptyBinNum { body })
         } else {
@@ -595,8 +571,8 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
     }
 
     /// Lexes the next token, a hexadecimal number starting with `0x`.
-    fn lex_0x(&mut self) -> OrEof<Token<'arn>> {
-        let mut body = self.new_astring();
+    fn lex_0x(&mut self) -> OrEof<Token> {
+        let mut body = String::new();
         let mut val = 0i64;
         let mut has_digit = false;
         loop {
@@ -619,7 +595,7 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
                 },
             }
         }
-        let body = body.into_str();
+        let body = body;
         Just(if !has_digit {
             Error(EmptyHexNum { body })
         } else {
@@ -628,8 +604,8 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
     }
 
     /// Lexes the next decimal number token.
-    fn lex_dec_num(&mut self, head_0: bool) -> OrEof<Token<'arn>> {
-        let mut body = self.new_astring();
+    fn lex_dec_num(&mut self, head_0: bool) -> OrEof<Token> {
+        let mut body = String::new();
         if head_0 {
             body.push('0');
         }
@@ -651,12 +627,12 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
                 },
             }
         }
-        Just(num(Dec(body.into_str()), val))
+        Just(num(Dec(body), val))
     }
 
     /// Lexes a name.
-    fn lex_name(&mut self) -> OrEof<Token<'arn>> {
-        let mut name = self.new_astring();
+    fn lex_name(&mut self) -> OrEof<Token> {
+        let mut name = String::new();
         loop {
             match self.head {
                 Eof => break,
@@ -674,16 +650,16 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
                 },
             };
         }
-        Just(match name.into_str() {
+        Just(match name.as_str() {
             "fn" => Fn,
             "let" => Let,
-            name => Ident { name },
+            _ => Ident { name },
         })
     }
 
     /// Lexes the next token, starting with a whitespace character.
-    fn lex_whitespace(&mut self) -> OrEof<Token<'arn>> {
-        let mut str = self.new_astring();
+    fn lex_whitespace(&mut self) -> OrEof<Token> {
+        let mut str = String::new();
         let mut newline_cnt = 0;
         loop {
             match self.head {
@@ -703,14 +679,14 @@ impl<'arn, I: Iterator<Item = char>> Lexer<'arn, I> {
             }
         }
         Just(Whitespace {
-            str: str.into_str(),
+            str: str,
             nl_cnt: newline_cnt,
         })
     }
 }
 
-impl<'arn, I: Iterator<Item = char>> Iterator for Lexer<'arn, I> {
-    type Item = (Token<'arn>, Span);
+impl<I: Iterator<Item = char>> Iterator for Lexer<I> {
+    type Item = (Token, Span);
     fn next(&mut self) -> Option<Self::Item> {
         let from = self.pos;
         match self.lex() {
@@ -745,9 +721,8 @@ abcde
     /// Tests that lexing and displaying code retrieves the original code.
     #[test]
     fn test_next_display() {
-        let arn = Arena::new();
-        let mut buf = arn.new_astring();
-        for (tok, _) in lexer(pos(0, 0), BIG.chars(), &arn) {
+        let mut buf = String::new();
+        for (tok, _) in lexer(pos(0, 0), BIG.chars()) {
             let _ = write!(buf, "{}", tok);
         }
         assert_eq!(BIG, buf);
@@ -755,8 +730,7 @@ abcde
 
     /// Tests lexing `s` against `get_want` parametrized over the context.
     fn test_lex(s: &str, want: Vec<(Token, Span)>) {
-        let arn = Arena::new();
-        let res: Vec<_> = lexer(pos(0, 0), s.chars(), &arn)
+        let res: Vec<_> = lexer(pos(0, 0), s.chars())
             .filter(|tok| match tok.0 {
                 Whitespace { .. } => false,
                 _ => true,
@@ -780,14 +754,24 @@ abcde
                 (RBrack, span!((0, 4)..(0, 5))),
                 (LCurly, span!((0, 6)..(0, 7))),
                 (RCurly, span!((0, 7)..(0, 8))),
-                (LineComment { body: " xxx" }, span!((0, 9)..(0, 15))),
+                (
+                    LineComment {
+                        body: " xxx".into(),
+                    },
+                    span!((0, 9)..(0, 15)),
+                ),
                 (Comma, span!((1, 0)..(1, 1))),
                 (Semi, span!((1, 2)..(1, 3))),
                 (Colon, span!((1, 4)..(1, 5))),
                 (Dot, span!((1, 6)..(1, 7))),
                 (Dot2, span!((1, 8)..(1, 10))),
                 (Dot2Eq, span!((1, 11)..(1, 14))),
-                (BlockComment { body: "a/*b*/c" }, span!((1, 15)..(1, 26))),
+                (
+                    BlockComment {
+                        body: "a/*b*/c".into(),
+                    },
+                    span!((1, 15)..(1, 26)),
+                ),
                 (Eq, span!((2, 0)..(2, 1))),
                 (Eq2, span!((2, 2)..(2, 4))),
                 (Neq, span!((2, 5)..(2, 7))),
@@ -804,17 +788,28 @@ abcde
                 (Div, span!((5, 4)..(5, 5))),
                 (Fn, span!((6, 0)..(6, 2))),
                 (Let, span!((6, 3)..(6, 6))),
-                (num(Dec("123"), 123), span!((7, 0)..(7, 3))),
-                (num(Bin("101"), 0b101), span!((7, 4)..(7, 9))),
-                (num(Hex("a0f"), 0xa0f), span!((7, 10)..(7, 15))),
-                (Ident { name: "abcde" }, span!((8, 0)..(8, 5))),
-                (Error(EmptyBinNum { body: "__" }), span!((9, 0)..(9, 4))),
-                (Error(EmptyHexNum { body: "__" }), span!((9, 5)..(9, 9))),
+                (num(Dec("123".into()), 123), span!((7, 0)..(7, 3))),
+                (num(Bin("101".into()), 0b101), span!((7, 4)..(7, 9))),
+                (num(Hex("a0f".into()), 0xa0f), span!((7, 10)..(7, 15))),
+                (
+                    Ident {
+                        name: "abcde".into(),
+                    },
+                    span!((8, 0)..(8, 5)),
+                ),
+                (
+                    Error(EmptyBinNum { body: "__".into() }),
+                    span!((9, 0)..(9, 4)),
+                ),
+                (
+                    Error(EmptyHexNum { body: "__".into() }),
+                    span!((9, 5)..(9, 9)),
+                ),
                 (Error(StrayAmp { next: Just(' ') }), span!((10, 0)..(10, 1))),
                 (Error(StrayBar { next: Just(' ') }), span!((10, 2)..(10, 3))),
                 (Error(InvalidChar { c: '♡' }), span!((10, 4)..(10, 5))),
                 (
-                    Error(UnclosedBlockComment { body: "abc" }),
+                    Error(UnclosedBlockComment { body: "abc".into() }),
                     span!((10, 6)..(10, 11)),
                 ),
             ],
@@ -827,8 +822,18 @@ abcde
         test_lex(
             "ab1_cde 漢字",
             vec![
-                (Ident { name: "ab1_cde" }, span!((0, 0)..(0, 7))),
-                (Ident { name: "漢字" }, span!((0, 8)..(0, 10))),
+                (
+                    Ident {
+                        name: "ab1_cde".into(),
+                    },
+                    span!((0, 0)..(0, 7)),
+                ),
+                (
+                    Ident {
+                        name: "漢字".into(),
+                    },
+                    span!((0, 8)..(0, 10)),
+                ),
             ],
         )
     }
@@ -841,14 +846,20 @@ abcde
 0b0101_1010
 0xab_01_EF",
             vec![
-                (num(Dec("0"), 0), span!((0, 0)..(0, 1))),
-                (num(Dec("0_123"), 123), span!((0, 2)..(0, 7))),
+                (num(Dec("0".into()), 0), span!((0, 0)..(0, 1))),
+                (num(Dec("0_123".into()), 123), span!((0, 2)..(0, 7))),
                 (
-                    num(Dec("1_234_567_890"), 1_234_567_890),
+                    num(Dec("1_234_567_890".into()), 1_234_567_890),
                     span!((0, 8)..(0, 21)),
                 ),
-                (num(Bin("0101_1010"), 0b0101_1010), span!((1, 0)..(1, 11))),
-                (num(Hex("ab_01_EF"), 0xab_01_EF), span!((2, 0)..(2, 10))),
+                (
+                    num(Bin("0101_1010".into()), 0b0101_1010),
+                    span!((1, 0)..(1, 11)),
+                ),
+                (
+                    num(Hex("ab_01_EF".into()), 0xab_01_EF),
+                    span!((2, 0)..(2, 10)),
+                ),
             ],
         )
     }
