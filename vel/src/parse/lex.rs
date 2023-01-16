@@ -11,7 +11,7 @@ pub enum OrEof<T> {
     /// EOF, or the end of the input stream.
     Eof,
 }
-use OrEof::*;
+pub use OrEof::*;
 
 impl<T> From<Option<T>> for OrEof<T> {
     fn from(o: Option<T>) -> Self {
