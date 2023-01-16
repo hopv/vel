@@ -124,7 +124,7 @@ pub enum Token {
     Whitespace {
         str: String,
         /// The number of newlines `\n`.
-        nl_cnt: usize,
+        newline_cnt: usize,
     },
     /// Error token.
     Error(LexErr),
@@ -308,9 +308,8 @@ impl<I: Iterator<Item = char>> Lexer<I> {
     }
 
     /// Moves the cursor one character ahead.
-    /// Returns itself for convenience.
     #[inline]
-    fn mov(&mut self) -> &mut Self {
+    fn mov(&mut self) {
         match self.head {
             Eof => panic!("Cannot perform mov when the head is EOF"),
             Just(c) => {
@@ -318,7 +317,27 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                 self.head = self.input.next().into();
             }
         }
+    }
+
+    /// Moves and returns itself for convenience.
+    #[inline]
+    fn mov_and(&mut self) -> &mut Self {
+        self.mov();
         self
+    }
+
+    /// Moves and returns the head for convenience.
+    #[inline]
+    fn mov_head(&mut self) -> OrEof<char> {
+        self.mov();
+        self.head
+    }
+
+    /// Moves and returns the input token for convenience.
+    #[inline]
+    fn mov_just(&mut self, tok: Token) -> OrEof<Token> {
+        self.mov();
+        Just(tok)
     }
 
     /// Lexes the next token.
@@ -327,39 +346,91 @@ impl<I: Iterator<Item = char>> Lexer<I> {
             Eof => return Eof,
             Just(c) => c,
         };
-        let tok = match head {
-            // Determined at this point
-            '(' => LParen,
-            ')' => RParen,
-            '[' => LBrack,
-            ']' => RBrack,
-            '{' => LCurly,
-            '}' => RCurly,
-            ',' => Comma,
-            ';' => Semi,
-            ':' => Colon,
-            '*' => Ast,
-            '+' => Plus,
-            // Starting with `.`
-            '.' => return self.mov().lex_dot(),
-            // Starting with `-`
-            '-' => return self.mov().lex_minus(),
-            // Starting with `=`
-            '=' => return self.mov().lex_eq(),
-            // Starting with `~`
-            '~' => return self.mov().lex_tilde(),
-            // Starting with `/`
-            '/' => return self.mov().lex_slash(),
-            // Starting with `&`
-            '&' => return self.mov().lex_amp(),
-            // Starting with `|`
-            '|' => return self.mov().lex_bar(),
-            // Starting with `<`
-            '<' => return self.mov().lex_lt(),
-            // Starting with `>`
-            '>' => return self.mov().lex_gt(),
-            // Starting with zero
-            '0' => return self.mov().lex_0(),
+        match head {
+            // `(`
+            '(' => self.mov_just(LParen),
+            // `)`
+            ')' => self.mov_just(RParen),
+            // `[`
+            '[' => self.mov_just(LBrack),
+            // `]`
+            ']' => self.mov_just(RBrack),
+            // `{`
+            '{' => self.mov_just(LCurly),
+            // `}`
+            '}' => self.mov_just(RCurly),
+            // `,`
+            ',' => self.mov_just(Comma),
+            // `;`
+            ';' => self.mov_just(Semi),
+            // `:`
+            ':' => self.mov_just(Colon),
+            // `*`
+            '*' => self.mov_just(Ast),
+            // `+`
+            '+' => self.mov_just(Plus),
+            // `.`
+            '.' => match self.mov_head() {
+                // `..`
+                Just('.') => match self.mov_head() {
+                    // `..=`
+                    Just('=') => self.mov_just(Dot2Eq),
+                    _ => Just(Dot2),
+                },
+                _ => Just(Dot),
+            },
+            // `-`
+            '-' => match self.mov_head() {
+                // `->`
+                Just('>') => self.mov_just(Arrow),
+                _ => Just(Minus),
+            },
+            // `=`
+            '=' => match self.mov_head() {
+                // `==`
+                Just('=') => self.mov_just(Eq2),
+                _ => Just(Eq),
+            },
+            // `~`
+            '~' => match self.mov_head() {
+                // `~=`
+                Just('=') => self.mov_just(Neq),
+                _ => Just(Not),
+            },
+            // `/`
+            '/' => match self.mov_head() {
+                // `//`
+                Just('/') => self.mov_and().lex_slash2(),
+                // `/*`
+                Just('*') => self.mov_and().lex_slash_ast(),
+                _ => Just(Div),
+            },
+            // `&`
+            '&' => match self.mov_head() {
+                // `&&`
+                Just('&') => self.mov_just(And),
+                next => Just(Error(StrayAmp { next })),
+            },
+            // `|`
+            '|' => match self.mov_head() {
+                // `||`
+                Just('|') => self.mov_just(Or),
+                next => Just(Error(StrayBar { next })),
+            },
+            // `<`
+            '<' => match self.mov_head() {
+                // `<=`
+                Just('=') => self.mov_just(Leq),
+                _ => Just(Lt),
+            },
+            // `>`
+            '>' => match self.mov_head() {
+                // `>=`
+                Just('=') => self.mov_just(Geq),
+                _ => Just(Gt),
+            },
+            // `0`
+            '0' => return self.mov_and().lex_0(),
             // Number, starting with a nonzero digit, `1`-`9`
             '1'..='9' => return self.lex_dec_num(false),
             // Name, starting with '_' or an alphabet character
@@ -368,93 +439,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
             // Starting with a whitespace character
             _ if head.is_whitespace() => return self.lex_whitespace(),
             // Invalid character
-            _ => Error(InvalidChar { c: head }),
-        };
-        self.mov();
-        Just(tok)
-    }
-
-    /// Lexes the next token, starting with `.`.
-    fn lex_dot(&mut self) -> OrEof<Token> {
-        match self.head {
-            Eof => Just(Dot),
-            Just(head) => match head {
-                // `..`
-                '.' => {
-                    self.mov();
-                    match self.head {
-                        Eof => Just(Dot2),
-                        Just(head) => match head {
-                            // `..=`
-                            '=' => {
-                                self.mov();
-                                Just(Dot2Eq)
-                            }
-                            _ => Just(Dot2),
-                        },
-                    }
-                }
-                _ => Just(Dot),
-            },
-        }
-    }
-
-    /// Lexes the next token, starting with `-`.
-    fn lex_minus(&mut self) -> OrEof<Token> {
-        match self.head {
-            Eof => Just(Minus),
-            Just(head) => match head {
-                // `->`
-                '>' => {
-                    self.mov();
-                    Just(Arrow)
-                }
-                _ => Just(Minus),
-            },
-        }
-    }
-
-    /// Lexes the next token, starting with `=`.
-    fn lex_eq(&mut self) -> OrEof<Token> {
-        match self.head {
-            Eof => Just(Eq),
-            Just(head) => match head {
-                // `==`
-                '=' => {
-                    self.mov();
-                    Just(Eq2)
-                }
-                _ => Just(Eq),
-            },
-        }
-    }
-
-    /// Lexes, starting with `~`.
-    fn lex_tilde(&mut self) -> OrEof<Token> {
-        match self.head {
-            Eof => Just(Not),
-            Just(head) => match head {
-                // `~=`
-                '=' => {
-                    self.mov();
-                    Just(Neq)
-                }
-                _ => Just(Not),
-            },
-        }
-    }
-
-    /// Lexes the next token, starting with `/`.
-    fn lex_slash(&mut self) -> OrEof<Token> {
-        match self.head {
-            Eof => Just(Div),
-            Just(head) => match head {
-                // `//`
-                '/' => self.mov().lex_slash2(),
-                // `/*`
-                '*' => self.mov().lex_slash_ast(),
-                _ => Just(Div),
-            },
+            _ => self.mov_just(Error(InvalidChar { c: head })),
         }
     }
 
@@ -463,11 +448,8 @@ impl<I: Iterator<Item = char>> Lexer<I> {
         let mut body = String::new();
         loop {
             match self.head {
-                Eof => break,
+                Eof | Just('\n') => break,
                 Just(head) => {
-                    if head == '\n' {
-                        break;
-                    }
                     body.push(head);
                     self.mov();
                 }
@@ -486,30 +468,23 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                 Just(head) => {
                     body.push(head);
                     self.mov();
-                    match head {
-                        '/' => match self.head {
-                            // `/*`
-                            Just('*') => {
-                                open_cnt += 1;
-                                body.push('*');
-                                self.mov();
+                    match (head, self.head) {
+                        // `/*`
+                        ('/', Just('*')) => {
+                            open_cnt += 1;
+                            body.push('*');
+                            self.mov();
+                        }
+                        // `*/`
+                        ('*', Just('/')) => {
+                            open_cnt -= 1;
+                            self.mov();
+                            if open_cnt == 0 {
+                                body.pop();
+                                return Just(BlockComment { body });
                             }
-                            _ => {}
-                        },
-                        '*' => match self.head {
-                            // `*/`
-                            Just('/') => {
-                                open_cnt -= 1;
-                                body.push('/');
-                                self.mov();
-                                if open_cnt == 0 {
-                                    body.pop();
-                                    body.pop();
-                                    return Just(BlockComment { body });
-                                }
-                            }
-                            _ => {}
-                        },
+                            body.push('/');
+                        }
                         _ => {}
                     }
                 }
@@ -517,78 +492,15 @@ impl<I: Iterator<Item = char>> Lexer<I> {
         }
     }
 
-    /// Lexes the next token, starting with `&`.
-    fn lex_amp(&mut self) -> OrEof<Token> {
-        match self.head {
-            Eof => Just(Error(StrayAmp { next: Eof })),
-            Just(head) => match head {
-                // `&&`
-                '&' => {
-                    self.mov();
-                    Just(And)
-                }
-                _ => Just(Error(StrayAmp { next: Just(head) })),
-            },
-        }
-    }
-
-    /// Lexes the next token, starting with `|`.
-    fn lex_bar(&mut self) -> OrEof<Token> {
-        match self.head {
-            Eof => Just(Error(StrayBar { next: Eof })),
-            Just(head) => match head {
-                // `||`
-                '|' => {
-                    self.mov();
-                    Just(Or)
-                }
-                _ => Just(Error(StrayBar { next: Just(head) })),
-            },
-        }
-    }
-
-    /// Lexes the next token, starting with `<`.
-    fn lex_lt(&mut self) -> OrEof<Token> {
-        match self.head {
-            Eof => Just(Lt),
-            Just(head) => match head {
-                // `<=`
-                '=' => {
-                    self.mov();
-                    Just(Leq)
-                }
-                _ => Just(Lt),
-            },
-        }
-    }
-
-    /// Lexes the next token, starting with `>`.
-    fn lex_gt(&mut self) -> OrEof<Token> {
-        match self.head {
-            Eof => Just(Gt),
-            Just(head) => match head {
-                // `>=`
-                '=' => {
-                    self.mov();
-                    Just(Geq)
-                }
-                _ => Just(Gt),
-            },
-        }
-    }
-
-    /// Lexes the next token, starting with zero.
+    /// Lexes the next token, starting with `0`.
     fn lex_0(&mut self) -> OrEof<Token> {
         match self.head {
-            Eof => self.lex_dec_num(true),
-            Just(head) => match head {
-                // Binary number, starting with `0b`
-                'b' => self.mov().lex_0b(),
-                // Hexadecimal number, starting with `0x`
-                'x' => self.mov().lex_0x(),
-                // Decimal number, starting with `0` not followed by `b`/`x`
-                _ => self.lex_dec_num(true),
-            },
+            // Binary number, starting with `0b`
+            Just('b') => self.mov_and().lex_0b(),
+            // Hexadecimal number, starting with `0x`
+            Just('x') => self.mov_and().lex_0x(),
+            // Decimal number, starting with `0` not followed by `b`/`x`
+            _ => self.lex_dec_num(true),
         }
     }
 
@@ -617,7 +529,6 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                 },
             }
         }
-        let body = body;
         Just(if !has_digit {
             Error(EmptyBinNum { body })
         } else {
@@ -650,7 +561,6 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                 },
             }
         }
-        let body = body;
         Just(if !has_digit {
             Error(EmptyHexNum { body })
         } else {
@@ -674,8 +584,8 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                         self.mov();
                     }
                     '0'..='9' => {
-                        body.push(head);
                         val = val * 10 + (head as u8 - '0' as u8) as i64;
+                        body.push(head);
                         self.mov();
                     }
                     _ => break,
@@ -727,25 +637,18 @@ impl<I: Iterator<Item = char>> Lexer<I> {
         let mut newline_cnt = 0;
         loop {
             match self.head {
-                Eof => break,
-                Just(head) => {
-                    if head.is_whitespace() {
-                        // Continues for a whitespace character.
-                        str.push(head);
-                        self.mov();
-                        if head == '\n' {
-                            newline_cnt += 1;
-                        }
-                    } else {
-                        break;
+                // Continues for a whitespace character.
+                Just(head) if head.is_whitespace() => {
+                    str.push(head);
+                    self.mov();
+                    if head == '\n' {
+                        newline_cnt += 1;
                     }
                 }
+                _ => break,
             }
         }
-        Just(Whitespace {
-            str: str,
-            nl_cnt: newline_cnt,
-        })
+        Just(Whitespace { str, newline_cnt })
     }
 }
 
