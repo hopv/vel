@@ -145,7 +145,7 @@ pub enum LexErr {
         next: OrEof<char>,
     },
     /// Unclosed block comment.
-    UnclosedBlockComment { body: String },
+    UnclosedBlockComment { body: String, open_cnt: usize },
     /// Invalid character.
     InvalidChar { c: char },
 }
@@ -209,7 +209,7 @@ impl Display for LexErr {
             EmptyHexNum { body } => write!(f, "0x{}", body),
             StrayAmp { .. } => write!(f, "&"),
             StrayBar { .. } => write!(f, "|"),
-            UnclosedBlockComment { body } => write!(f, "/*{}", body),
+            UnclosedBlockComment { body, .. } => write!(f, "/*{}", body),
             InvalidChar { c } => write!(f, "{}", c),
         }
     }
@@ -233,7 +233,14 @@ impl Display for LexErrMsg {
             EmptyHexNum { body } => write!(f, "Hexadecimal number without digits 0x{}", body),
             StrayAmp { next } => write!(f, "Stray & (before {}), && is expected", next),
             StrayBar { next } => write!(f, "Stray | (before {}), || is expected", next),
-            UnclosedBlockComment { .. } => write!(f, "Unclosed block comment"),
+            UnclosedBlockComment { open_cnt, .. } => {
+                write!(
+                    f,
+                    "Unclosed block comment (waiting for {} */{})",
+                    open_cnt,
+                    if *open_cnt > 1 { "s" } else { "" }
+                )
+            }
             InvalidChar { c } => write!(f, "Invalid character {}", c),
         }
     }
@@ -424,10 +431,10 @@ impl<I: Iterator<Item = char>> Lexer<I> {
     /// Lexes the next token, starting with `/*`.
     fn lex_slash_ast(&mut self) -> OrEof<Token> {
         let mut body = String::new();
-        let mut cnt = 1i64;
+        let mut open_cnt = 1usize;
         loop {
             match self.head {
-                Eof => return Just(Error(UnclosedBlockComment { body })),
+                Eof => return Just(Error(UnclosedBlockComment { body, open_cnt })),
                 Just(head) => {
                     body.push(head);
                     self.mov();
@@ -435,7 +442,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                         '/' => match self.head {
                             // `/*`
                             Just('*') => {
-                                cnt += 1;
+                                open_cnt += 1;
                                 body.push('*');
                                 self.mov();
                             }
@@ -444,10 +451,10 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                         '*' => match self.head {
                             // `*/`
                             Just('/') => {
-                                cnt -= 1;
+                                open_cnt -= 1;
                                 body.push('/');
                                 self.mov();
-                                if cnt == 0 {
+                                if open_cnt == 0 {
                                     body.pop();
                                     body.pop();
                                     return Just(BlockComment { body });
@@ -716,7 +723,7 @@ fn let
 123 0b101 0xa0f
 abcde
 0b__ 0x__
-& | ♡ /*abc";
+& | ♡ /*a/*b";
 
     /// Tests that lexing and displaying code retrieves the original code.
     #[test]
@@ -809,8 +816,11 @@ abcde
                 (Error(StrayBar { next: Just(' ') }), span!((10, 2)..(10, 3))),
                 (Error(InvalidChar { c: '♡' }), span!((10, 4)..(10, 5))),
                 (
-                    Error(UnclosedBlockComment { body: "abc".into() }),
-                    span!((10, 6)..(10, 11)),
+                    Error(UnclosedBlockComment {
+                        body: "a/*b".into(),
+                        open_cnt: 2,
+                    }),
+                    span!((10, 6)..(10, 12)),
                 ),
             ],
         );
