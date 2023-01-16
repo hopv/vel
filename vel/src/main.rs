@@ -1,4 +1,3 @@
-pub mod intern;
 pub mod lex;
 pub mod util;
 
