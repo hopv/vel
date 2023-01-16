@@ -1,4 +1,4 @@
-pub mod lex;
+pub mod parse;
 pub mod util;
 
 fn main() {

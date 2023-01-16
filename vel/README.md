@@ -7,8 +7,8 @@ The heart of Vel, its language engine, written in Rust.
 ## Features
 
 - [x] Lexer ([`lex`](./src/lex.rs))
-- [ ] Formatter
 - [ ] Parser
+- [ ] Formatter
 - [ ] Type checker
 - [ ] LSP server
 
