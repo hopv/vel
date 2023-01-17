@@ -281,7 +281,7 @@ impl Display for LexErrMsg {
             UnclosedBlockComment { open_cnt, .. } => {
                 write!(
                     f,
-                    "Unclosed block comment (waiting for {} */{})",
+                    "Unclosed block comment until EOF (waiting for {} occurrence{} of */)",
                     open_cnt,
                     if *open_cnt > 1 { "s" } else { "" }
                 )
