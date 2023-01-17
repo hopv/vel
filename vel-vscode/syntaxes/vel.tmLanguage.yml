@@ -26,15 +26,7 @@ patterns:
     match: \b(if|else|loop|while|break|continue|return)\b
   - name: constant.language.boolean.vel
     match: \b(true|false)\b
-  - name: constant.numeric.integer.decimal.vel
-    match: \b[0-9][0-9_]*\b
-  - name: constant.numeric.integer.binary.vel
-    match: \b0b_*[01][01_]*\b
-  - name: invalid.illegal.constant.numeric.integer.binary.vel
-    match: \b0b_*\b
-  - name: constant.numeric.integer.hexadecimal.vel
-    match: \b0x_*[0-9a-fA-F][0-9a-fA-F_]*\b
-  - name: invalid.illegal.constant.numeric.integer.hexadecimal.vel
-    match: \b0x_*\b
+  - name: constant.numeric.integer.vel
+    match: \b[0-9]\w*\b
   - name: variable.other
     match: \b\w[_0-9\w]*\b

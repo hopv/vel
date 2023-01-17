@@ -130,8 +130,17 @@ pub enum Token {
     True,
     /// `false`.
     False,
-    /// Number literal.
-    Num { body: NumLit, val: i64 },
+    /// Integer numeric literal.
+    Num {
+        /// Kind.
+        kind: NumKind,
+        /// Digits.
+        digits: Box<str>,
+        /// Suffix.
+        suffix: Box<str>,
+        /// Pre-calculated value.
+        val: i128,
+    },
     /// Identifier.
     Ident { name: Box<str> },
     /// Line comment, `//...`.
@@ -149,37 +158,36 @@ pub enum Token {
 }
 pub use Token::*;
 
-/// Utility for creating a number literal token.
-#[inline]
-pub fn num(body: NumLit, val: i64) -> Token {
-    Num { body, val }
-}
-
-/// Number literal.
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum NumLit {
-    /// Decimal.
-    Dec(Box<str>),
-    /// Binary.
-    Bin(Box<str>),
-    /// Hexadecimal.
-    Hex(Box<str>),
-}
-pub use NumLit::*;
-
 /// Vel lexing error.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum LexErr {
-    /// Empty binary number.
-    EmptyBinNum { body: Box<str> },
-    /// Empty hexadecimal number.
-    EmptyHexNum { body: Box<str> },
+    /// Integer numeric literal with empty digits.
+    EmptyNum {
+        /// Kind. Can't be Dec.
+        kind: NumKind,
+        /// Digits.
+        digits: Box<str>,
+        /// Suffix.
+        suffix: Box<str>,
+    },
     /// Unclosed block comment.
     UnclosedBlockComment { body: Box<str>, open_cnt: usize },
     /// Invalid character.
     InvalidChar { c: char },
 }
 pub use LexErr::*;
+
+/// Integer numeric literal kind.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum NumKind {
+    /// Decimal.
+    Dec,
+    /// Binary.
+    Bin,
+    /// Hexadecimal.
+    Hex,
+}
+pub use NumKind::*;
 
 impl Display for Token {
     fn fmt(&self, f: &mut Formatter) -> Result {
@@ -231,7 +239,12 @@ impl Display for Token {
             Return => write!(f, "return"),
             True => write!(f, "true"),
             False => write!(f, "false"),
-            Num { body, .. } => write!(f, "{}", body),
+            Num {
+                kind,
+                digits,
+                suffix,
+                ..
+            } => write!(f, "{}{}{}", kind, digits, suffix),
             Ident { name } => write!(f, "{}", name),
             LineComment { body } => write!(f, "//{}", body),
             BlockComment { body } => write!(f, "/*{}*/", body),
@@ -241,21 +254,19 @@ impl Display for Token {
     }
 }
 
-impl Display for NumLit {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        match self {
-            Dec(s) => write!(f, "{}", s),
-            Bin(s) => write!(f, "0b{}", s),
-            Hex(s) => write!(f, "0x{}", s),
-        }
-    }
-}
-
 impl Display for LexErr {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
-            EmptyBinNum { body } => write!(f, "0b{}", body),
-            EmptyHexNum { body } => write!(f, "0x{}", body),
+            EmptyNum {
+                kind,
+                digits,
+                suffix,
+                ..
+            } => match kind {
+                Dec => unreachable!("EmptyNum with Dec kind"),
+                Bin => write!(f, "0b{}{}", digits, suffix),
+                Hex => write!(f, "0x{}{}", digits, suffix),
+            },
             UnclosedBlockComment { body, .. } => write!(f, "/*{}", body),
             InvalidChar { c } => write!(f, "{}", c),
         }
@@ -276,8 +287,16 @@ pub struct LexErrMsg(LexErr);
 impl Display for LexErrMsg {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match &self.0 {
-            EmptyBinNum { body } => write!(f, "Binary number without digits 0b{}", body),
-            EmptyHexNum { body } => write!(f, "Hexadecimal number without digits 0x{}", body),
+            err @ EmptyNum { kind, .. } => write!(
+                f,
+                "{} number without digits {}",
+                match kind {
+                    Dec => unreachable!("EmptyNum with Dec kind"),
+                    Bin => "Binary",
+                    Hex => "Hexadecimal",
+                },
+                err
+            ),
             UnclosedBlockComment { open_cnt, .. } => {
                 write!(
                     f,
@@ -287,6 +306,26 @@ impl Display for LexErrMsg {
                 )
             }
             InvalidChar { c } => write!(f, "Invalid character {}", c),
+        }
+    }
+}
+
+impl Display for NumKind {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            Dec => write!(f, ""),
+            Bin => write!(f, "0b"),
+            Hex => write!(f, "0x"),
+        }
+    }
+}
+
+impl NumKind {
+    fn radix(self: NumKind) -> u32 {
+        match self {
+            Dec => 10,
+            Bin => 2,
+            Hex => 16,
         }
     }
 }
@@ -457,10 +496,9 @@ impl<I: Iterator<Item = char>> Lexer<I> {
             // `0`
             '0' => return self.mov_and().lex_0(),
             // Number, starting with a nonzero digit, `1`-`9`
-            '1'..='9' => return self.lex_dec_num(false),
+            '1'..='9' => return self.lex_num(Dec, false),
             // Name, starting with '_' or an alphabetic character
-            '_' => return self.lex_name(),
-            _ if head.is_alphabetic() => return self.lex_name(),
+            _ if head == '_' || head.is_alphabetic() => return self.lex_name(),
             // Starting with a whitespace character
             _ if head.is_whitespace() => return self.lex_whitespace(),
             // Invalid character
@@ -526,104 +564,72 @@ impl<I: Iterator<Item = char>> Lexer<I> {
     fn lex_0(&mut self) -> OrEof<Token> {
         match self.head {
             // Binary number, starting with `0b`
-            Just('b') => self.mov_and().lex_0b(),
+            Just('b') => self.mov_and().lex_num(Bin, false),
             // Hexadecimal number, starting with `0x`
-            Just('x') => self.mov_and().lex_0x(),
+            Just('x') => self.mov_and().lex_num(Hex, false),
             // Decimal number, starting with `0` not followed by `b`/`x`
-            _ => self.lex_dec_num(true),
+            _ => self.lex_num(Dec, true),
         }
     }
 
-    /// Lexes the next number literal token, starting with `0b`.
-    fn lex_0b(&mut self) -> OrEof<Token> {
-        let mut body = String::new();
-        let mut val = 0i64;
+    /// Lexes the next number token of the radix.
+    ///
+    /// - `head_0`: Whether the number has a leading `0`.
+    fn lex_num(&mut self, kind: NumKind, head_0: bool) -> OrEof<Token> {
         let mut has_digit = false;
-        loop {
-            match self.head {
-                Eof => break,
-                Just(head) => match head {
-                    // Separator
-                    '_' => {
-                        body.push(head);
-                        self.mov();
-                    }
-                    // Digit
-                    '0' | '1' => {
-                        has_digit = true;
-                        val = val * 2 + (head as u8 - '0' as u8) as i64;
-                        body.push(head);
-                        self.mov();
-                    }
-                    _ => break,
-                },
-            }
-        }
-        let body = body.into();
-        Just(if !has_digit {
-            Error(EmptyBinNum { body })
-        } else {
-            num(Bin(body), val)
-        })
-    }
-
-    /// Lexes the next token, a hexadecimal number starting with `0x`.
-    fn lex_0x(&mut self) -> OrEof<Token> {
-        let mut body = String::new();
-        let mut val = 0i64;
-        let mut has_digit = false;
-        loop {
-            match self.head {
-                Eof => break,
-                Just(head) => match head {
-                    // Separator
-                    '_' => {
-                        body.push(head);
-                        self.mov();
-                    }
-                    // Digit
-                    '0'..='9' | 'a'..='f' | 'A'..='F' => {
-                        has_digit = true;
-                        val = val * 16 + head.to_digit(16).unwrap() as i64;
-                        body.push(head);
-                        self.mov();
-                    }
-                    _ => break,
-                },
-            }
-        }
-        Just(if !has_digit {
-            Error(EmptyHexNum { body: body.into() })
-        } else {
-            num(Hex(body.into()), val)
-        })
-    }
-
-    /// Lexes the next decimal number token.
-    fn lex_dec_num(&mut self, head_0: bool) -> OrEof<Token> {
-        let mut body = String::new();
+        // Parse digits and calculate the value.
+        let mut digits = String::new();
         if head_0 {
-            body.push('0');
+            digits.push('0');
+            has_digit = true;
         }
-        let mut val = 0i64;
+        let mut val = 0i128;
+        let radix = kind.radix();
         loop {
             match self.head {
-                Eof => break,
-                Just(head) => match head {
-                    '_' => {
-                        body.push(head);
-                        self.mov();
-                    }
-                    '0'..='9' => {
-                        val = val * 10 + (head as u8 - '0' as u8) as i64;
-                        body.push(head);
-                        self.mov();
-                    }
-                    _ => break,
-                },
+                Just('_') => {
+                    digits.push('_');
+                    self.mov();
+                }
+                Just(head) if head.is_digit(radix) => {
+                    has_digit = true;
+                    val = val * (radix as i128) + head.to_digit(radix).unwrap() as i128;
+                    digits.push(head);
+                    self.mov();
+                }
+                _ => break,
             }
         }
-        Just(num(Dec(body.into()), val))
+        let digits = digits.into();
+
+        // Parse suffix.
+        let mut suffix = String::new();
+        loop {
+            match self.head {
+                // Continues for `_`, `0`-`9`, or an alphabetic character.
+                Just(head) if head == '_' || head.is_ascii_digit() || head.is_alphabetic() => {
+                    suffix.push(head);
+                    self.mov();
+                }
+                _ => break,
+            };
+        }
+        let suffix = suffix.into();
+
+        Just(if has_digit {
+            Num {
+                kind,
+                digits,
+                suffix,
+                val,
+            }
+        } else {
+            Error(EmptyNum {
+                kind,
+                digits,
+                suffix,
+            })
+        })
     }
 
     /// Lexes a name.
@@ -631,19 +637,12 @@ impl<I: Iterator<Item = char>> Lexer<I> {
         let mut name = String::new();
         loop {
             match self.head {
-                Eof => break,
-                Just(head) => match head {
-                    // Continues for `_`, `0`-`9`, or an alphabetic character.
-                    '_' | '0'..='9' => {
-                        name.push(head);
-                        self.mov();
-                    }
-                    _ if head.is_alphabetic() => {
-                        name.push(head);
-                        self.mov();
-                    }
-                    _ => break,
-                },
+                // Continues for `_`, `0`-`9`, or an alphabetic character.
+                Just(head) if head == '_' || head.is_ascii_digit() || head.is_alphabetic() => {
+                    name.push(head);
+                    self.mov();
+                }
+                _ => break,
             };
         }
         Just(match name.as_str() {
@@ -715,11 +714,9 @@ mod tests {
 & && | || / ^ @ % $
 fn let
 if else loop while break continue return
-true false
-123 0b101 0xa0f
+true false 123i32
 abcde
-0b__ 0x__
-♡ /*a/*b";
+0b__xxx ♡ /*a/*b";
 
     /// Tests that lexing and displaying code retrieves the original code.
     #[test]
@@ -810,30 +807,36 @@ abcde
                 (Return, pos(7, 34)..pos(7, 40)),
                 (True, pos(8, 0)..pos(8, 4)),
                 (False, pos(8, 5)..pos(8, 10)),
-                (num(Dec("123".into()), 123), pos(9, 0)..pos(9, 3)),
-                (num(Bin("101".into()), 0b101), pos(9, 4)..pos(9, 9)),
-                (num(Hex("a0f".into()), 0xa0f), pos(9, 10)..pos(9, 15)),
+                (
+                    Num {
+                        kind: Dec,
+                        digits: "123".into(),
+                        suffix: "i32".into(),
+                        val: 123,
+                    },
+                    pos(8, 11)..pos(8, 17),
+                ),
                 (
                     Ident {
                         name: "abcde".into(),
                     },
-                    pos(10, 0)..pos(10, 5),
+                    pos(9, 0)..pos(9, 5),
                 ),
                 (
-                    Error(EmptyBinNum { body: "__".into() }),
-                    pos(11, 0)..pos(11, 4),
+                    Error(EmptyNum {
+                        kind: Bin,
+                        digits: "__".into(),
+                        suffix: "xxx".into(),
+                    }),
+                    pos(10, 0)..pos(10, 7),
                 ),
-                (
-                    Error(EmptyHexNum { body: "__".into() }),
-                    pos(11, 5)..pos(11, 9),
-                ),
-                (Error(InvalidChar { c: '♡' }), pos(12, 0)..pos(12, 1)),
+                (Error(InvalidChar { c: '♡' }), pos(10, 8)..pos(10, 9)),
                 (
                     Error(UnclosedBlockComment {
                         body: "a/*b".into(),
                         open_cnt: 2,
                     }),
-                    pos(12, 2)..pos(12, 8),
+                    pos(10, 10)..pos(10, 16),
                 ),
             ],
         );
@@ -865,23 +868,54 @@ abcde
     #[test]
     fn test_next_number() {
         test_lex(
-            r"0 0_123 1_234_567_890
-0b0101_1010
-0xab_01_EF",
+            r"0 0123i32 1_234_567_890
+0b0101_1010usize
+0xab_01_EFu64",
             vec![
-                (num(Dec("0".into()), 0), pos(0, 0)..pos(0, 1)),
-                (num(Dec("0_123".into()), 123), pos(0, 2)..pos(0, 7)),
                 (
-                    num(Dec("1_234_567_890".into()), 1_234_567_890),
-                    pos(0, 8)..pos(0, 21),
+                    Num {
+                        kind: Dec,
+                        digits: "0".into(),
+                        suffix: "".into(),
+                        val: 0,
+                    },
+                    pos(0, 0)..pos(0, 1),
                 ),
                 (
-                    num(Bin("0101_1010".into()), 0b0101_1010),
-                    pos(1, 0)..pos(1, 11),
+                    Num {
+                        kind: Dec,
+                        digits: "0123".into(),
+                        suffix: "i32".into(),
+                        val: 0123,
+                    },
+                    pos(0, 2)..pos(0, 9),
                 ),
                 (
-                    num(Hex("ab_01_EF".into()), 0xab_01_EF),
-                    pos(2, 0)..pos(2, 10),
+                    Num {
+                        kind: Dec,
+                        digits: "1_234_567_890".into(),
+                        suffix: "".into(),
+                        val: 1_234_567_890,
+                    },
+                    pos(0, 10)..pos(0, 23),
+                ),
+                (
+                    Num {
+                        kind: Bin,
+                        digits: "0101_1010".into(),
+                        suffix: "usize".into(),
+                        val: 0b0101_1010,
+                    },
+                    pos(1, 0)..pos(1, 16),
+                ),
+                (
+                    Num {
+                        kind: Hex,
+                        digits: "ab_01_EF".into(),
+                        suffix: "u64".into(),
+                        val: 0xab_01_EF,
+                    },
+                    pos(2, 0)..pos(2, 13),
                 ),
             ],
         )
