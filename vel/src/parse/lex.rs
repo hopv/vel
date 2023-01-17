@@ -458,7 +458,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
             '0' => return self.mov_and().lex_0(),
             // Number, starting with a nonzero digit, `1`-`9`
             '1'..='9' => return self.lex_dec_num(false),
-            // Name, starting with '_' or an alphabet character
+            // Name, starting with '_' or an alphabetic character
             '_' => return self.lex_name(),
             _ if head.is_alphabetic() => return self.lex_name(),
             // Starting with a whitespace character
@@ -633,7 +633,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
             match self.head {
                 Eof => break,
                 Just(head) => match head {
-                    // Continues for `_`, `0`-`9`, or an alphabet character.
+                    // Continues for `_`, `0`-`9`, or an alphabetic character.
                     '_' | '0'..='9' => {
                         name.push(head);
                         self.mov();
