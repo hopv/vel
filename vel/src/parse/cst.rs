@@ -19,7 +19,7 @@ pub use TopLevel::*;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct FnDef {
     /// Function name.
-    pub name: String,
+    pub name: Box<str>,
     /// Static inputs.
     pub stat_ins: Vec<Entry>,
     /// Dynamic inputs.
@@ -34,7 +34,7 @@ pub struct FnDef {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Entry {
     /// Name of the argument.
-    pub name: String,
+    pub name: Box<str>,
     /// Type of the argument.
     pub ty: Ty,
 }
@@ -43,7 +43,7 @@ pub struct Entry {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Ty {
     /// Name.
-    NameTy(String),
+    NameTy(Box<str>),
 }
 pub use Ty::*;
 

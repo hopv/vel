@@ -133,14 +133,14 @@ pub enum Token {
     /// Number literal.
     Num { body: NumLit, val: i64 },
     /// Identifier.
-    Ident { name: String },
+    Ident { name: Box<str> },
     /// Line comment, `//...`.
-    LineComment { body: String },
+    LineComment { body: Box<str> },
     /// Block comment, `/* ... */` (nestable).
-    BlockComment { body: String },
+    BlockComment { body: Box<str> },
     /// Whitespace.
     Whitespace {
-        str: String,
+        str: Box<str>,
         /// The number of newlines `\n`.
         newline_cnt: usize,
     },
@@ -159,11 +159,11 @@ pub fn num(body: NumLit, val: i64) -> Token {
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum NumLit {
     /// Decimal.
-    Dec(String),
+    Dec(Box<str>),
     /// Binary.
-    Bin(String),
+    Bin(Box<str>),
     /// Hexadecimal.
-    Hex(String),
+    Hex(Box<str>),
 }
 pub use NumLit::*;
 
@@ -171,11 +171,11 @@ pub use NumLit::*;
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum LexErr {
     /// Empty binary number.
-    EmptyBinNum { body: String },
+    EmptyBinNum { body: Box<str> },
     /// Empty hexadecimal number.
-    EmptyHexNum { body: String },
+    EmptyHexNum { body: Box<str> },
     /// Unclosed block comment.
-    UnclosedBlockComment { body: String, open_cnt: usize },
+    UnclosedBlockComment { body: Box<str>, open_cnt: usize },
     /// Invalid character.
     InvalidChar { c: char },
 }
@@ -480,7 +480,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                 }
             }
         }
-        Just(LineComment { body })
+        Just(LineComment { body: body.into() })
     }
 
     /// Lexes the next token, starting with `/*`.
@@ -489,7 +489,12 @@ impl<I: Iterator<Item = char>> Lexer<I> {
         let mut open_cnt = 1usize;
         loop {
             match self.head {
-                Eof => return Just(Error(UnclosedBlockComment { body, open_cnt })),
+                Eof => {
+                    return Just(Error(UnclosedBlockComment {
+                        body: body.into(),
+                        open_cnt,
+                    }))
+                }
                 Just(head) => {
                     body.push(head);
                     self.mov();
@@ -506,7 +511,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                             self.mov();
                             if open_cnt == 0 {
                                 body.pop();
-                                return Just(BlockComment { body });
+                                return Just(BlockComment { body: body.into() });
                             }
                             body.push('/');
                         }
@@ -554,6 +559,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                 },
             }
         }
+        let body = body.into();
         Just(if !has_digit {
             Error(EmptyBinNum { body })
         } else {
@@ -587,9 +593,9 @@ impl<I: Iterator<Item = char>> Lexer<I> {
             }
         }
         Just(if !has_digit {
-            Error(EmptyHexNum { body })
+            Error(EmptyHexNum { body: body.into() })
         } else {
-            num(Hex(body), val)
+            num(Hex(body.into()), val)
         })
     }
 
@@ -617,7 +623,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                 },
             }
         }
-        Just(num(Dec(body), val))
+        Just(num(Dec(body.into()), val))
     }
 
     /// Lexes a name.
@@ -652,7 +658,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
             "return" => Return,
             "true" => True,
             "false" => False,
-            _ => Ident { name },
+            _ => Ident { name: name.into() },
         })
     }
 
@@ -673,7 +679,10 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                 _ => break,
             }
         }
-        Just(Whitespace { str, newline_cnt })
+        Just(Whitespace {
+            str: str.into(),
+            newline_cnt,
+        })
     }
 }
 
