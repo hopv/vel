@@ -1,7 +1,6 @@
 //! Position and span utilities.
 
 use std::fmt::Display;
-use std::ops::Range;
 
 /// A position in a string represented in the line and column numbers.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -36,10 +35,3 @@ impl LineCol {
         }
     }
 }
-
-/// A continuous span in a string.
-///
-/// It is an alias of `Range<LineCol>`,
-/// consisting of `start, end: LineCol`.
-/// It can be constructed by the operator `..`.
-pub type Span = Range<LineCol>;

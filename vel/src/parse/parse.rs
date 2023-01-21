@@ -2,23 +2,25 @@
 
 use super::cst::{Entry, FnDef, NameTy, Stmt, TopLevel, Whole};
 use super::lex::{Eof, Just, Lexer, OrEof, Token};
-use crate::util::linecol::{LineCol, Span};
 use std::mem::replace;
+use std::ops::Range;
 
 /// Parser.
-pub struct Parser<I> {
+pub struct Parser<'a> {
+    /// String.
+    s: &'a str,
     /// Lexer.
-    lexer: Lexer<I>,
+    lexer: Lexer<'a>,
     /// Head token.
-    head: OrEof<(Token, Span)>,
+    head: OrEof<(Token, Range<usize>)>,
     /// Ignored tokens.
-    ignored: Vec<(Token, Span)>,
+    ignored: Vec<(Token, Range<usize>)>,
 }
 
-impl<I: Iterator<Item = char>> Parser<I> {
+impl<'a> Parser<'a> {
     /// Creates a new parser.
-    pub fn new(lc: LineCol, input: I) -> Self {
-        let mut lexer = Lexer::new(lc, input);
+    pub fn new(s: &'a str) -> Self {
+        let mut lexer = Lexer::new(s);
         let mut ignored = Vec::new();
         let head = loop {
             match lexer.next() {
@@ -34,6 +36,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
             }
         };
         Self {
+            s,
             lexer,
             head,
             ignored,
@@ -41,7 +44,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
     }
 
     /// Moves to the next token, returning the current state.
-    fn mov(&mut self) -> (Token, Span, Vec<(Token, Span)>) {
+    fn mov(&mut self) -> (Token, Range<usize>, Vec<(Token, Range<usize>)>) {
         let old_head = match replace(&mut self.head, Eof) {
             Eof => panic!("Should not call mov when the head is EOF"),
             Just(head) => head,
@@ -75,10 +78,10 @@ impl<I: Iterator<Item = char>> Parser<I> {
     }
 
     /// Parses a whole file.
-    pub fn parse_whole(&mut self) -> Whole {
+    pub fn parse_whole(&mut self) -> Whole<'a> {
         let mut top_levels = Vec::new();
         loop {
-            match self.head {
+            match &self.head {
                 Eof => break,
                 Just(_) => top_levels.push(self.parse_top_level()),
             }
@@ -87,7 +90,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
     }
 
     /// Parses a top-level item.
-    pub fn parse_top_level(&mut self) -> TopLevel {
+    pub fn parse_top_level(&mut self) -> TopLevel<'a> {
         match self.mov().0 {
             Token::Fn => {
                 let fn_def = self.parse_fn_def();
@@ -98,9 +101,9 @@ impl<I: Iterator<Item = char>> Parser<I> {
     }
 
     /// Parses a function definition, with `fn` consumed.
-    pub fn parse_fn_def(&mut self) -> FnDef {
-        let name = match self.mov().0 {
-            Token::Ident { name } => name,
+    pub fn parse_fn_def(&mut self) -> FnDef<'a> {
+        let name = match self.mov() {
+            (Token::Ident, r, _) => &self.s[r],
             _ => todo!(),
         };
         match self.mov().0 {
@@ -144,7 +147,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
         }
     }
 
-    pub fn parse_args(&mut self) -> Vec<Entry> {
+    pub fn parse_args(&mut self) -> Vec<Entry<'a>> {
         let mut args = Vec::new();
         args.push(self.parse_arg());
         loop {
@@ -159,17 +162,17 @@ impl<I: Iterator<Item = char>> Parser<I> {
         args
     }
 
-    pub fn parse_arg(&mut self) -> Entry {
-        let name = match self.mov().0 {
-            Token::Ident { name } => name,
+    pub fn parse_arg(&mut self) -> Entry<'a> {
+        let name = match self.mov() {
+            (Token::Ident, r, _) => &self.s[r],
             _ => todo!(),
         };
         match self.mov().0 {
             Token::Colon => {}
             _ => todo!(),
         };
-        let ty_name = match self.mov().0 {
-            Token::Ident { name } => name,
+        let ty_name = match self.mov() {
+            (Token::Ident, r, _) => &self.s[r],
             _ => todo!(),
         };
         Entry {
@@ -194,7 +197,6 @@ impl<I: Iterator<Item = char>> Parser<I> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::linecol::linecol;
 
     /// Parses.
     #[test]
@@ -202,29 +204,29 @@ mod tests {
         let text = r"// Function
 fn foo[i: int](a: I64, b: U64) -> (c: I64) {
 }";
-        let mut parser = Parser::new(linecol(0, 0), text.chars());
+        let mut parser = Parser::new(text);
         assert_eq!(
             parser.parse_whole(),
             Whole {
                 top_levels: vec![FnDef(FnDef {
-                    name: "foo".into(),
+                    name: "foo",
                     stat_ins: vec![Entry {
-                        name: "i".into(),
-                        ty: NameTy("int".into())
+                        name: "i",
+                        ty: NameTy("int")
                     }],
                     dyn_ins: vec![
                         Entry {
-                            name: "a".into(),
-                            ty: NameTy("I64".into())
+                            name: "a",
+                            ty: NameTy("I64")
                         },
                         Entry {
-                            name: "b".into(),
-                            ty: NameTy("U64".into())
+                            name: "b",
+                            ty: NameTy("U64")
                         }
                     ],
                     outs: vec![Entry {
-                        name: "c".into(),
-                        ty: NameTy("I64".into())
+                        name: "c",
+                        ty: NameTy("I64")
                     }],
                     body: Stmt::Empty
                 })]
