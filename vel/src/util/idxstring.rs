@@ -1,10 +1,13 @@
 //! Indexed string.
 
-use std::ops::{Deref, Index, Range, RangeFrom, RangeTo};
+use std::ops::{Deref, Index, Range, RangeFrom, RangeFull, RangeTo};
 
 use super::linecol::{linecol, LineCol};
 
 /// Indexed string.
+///
+/// A line-column offset `LineCol` and a byte offset `usize` can be
+/// mutually converted in *O*(1) time.
 pub struct IdxString {
     /// Body string.
     body: String,
@@ -41,12 +44,16 @@ impl IdxString {
         let mut last_linecol = *self.linecols.last().unwrap();
         for c in s.chars() {
             self.body.push(c);
-            last_offset += c.len_utf8();
+            if c == '\n' {
+                self.line_idxs.push(self.char_offsets.len());
+            }
+            // `l` is from 1 to 4 inclusive.
+            let l = c.len_utf8();
+            last_offset += l;
             self.char_offsets.push(last_offset);
             last_linecol = last_linecol.after(c);
-            self.linecols.push(last_linecol);
-            if c == '\n' {
-                self.line_idxs.push(self.char_offsets.len() - 1);
+            for _ in 0..l {
+                self.linecols.push(last_linecol);
             }
         }
     }
@@ -58,32 +65,20 @@ impl IdxString {
     }
 
     /// Translates an offset into an line-column position.
+    ///
+    /// Works in *O*(1) time.
     #[inline]
     pub fn linecol(&self, offset: usize) -> LineCol {
         self.linecols[offset]
     }
 
     /// Translates a line-column position into an offset.
-    /// Works even if the position ignores line breaks of the last line.
+    ///
+    /// Works in *O*(1) time.
     #[inline]
     pub fn offset(&self, lc: LineCol) -> usize {
         let LineCol { line, col } = lc;
         self.char_offsets[self.line_idxs[line] + col]
-    }
-
-    /// Gets the character at the line-column position.
-    pub fn char_at(&self, lc: usize) -> char {
-        self.body[lc..].chars().next().unwrap()
-    }
-}
-
-impl From<String> for IdxString {
-    /// Converts `String` into `IdxString`.
-    #[inline]
-    fn from(s: String) -> Self {
-        let mut is = IdxString::new();
-        is.push_str(&s);
-        is
     }
 }
 
@@ -91,7 +86,17 @@ impl From<&str> for IdxString {
     /// Converts `&str` into `IdxString`.
     #[inline]
     fn from(s: &str) -> Self {
-        IdxString::from(String::from(s))
+        let mut is = IdxString::new();
+        is.push_str(&s);
+        is
+    }
+}
+
+impl From<String> for IdxString {
+    /// Converts `String` into `IdxString`.
+    #[inline]
+    fn from(s: String) -> Self {
+        IdxString::from(s.as_str())
     }
 }
 
@@ -105,16 +110,43 @@ impl From<IdxString> for String {
 
 impl Deref for IdxString {
     type Target = str;
-
     #[inline]
     fn deref(&self) -> &Self::Target {
         self.as_str()
     }
 }
 
+impl Index<Range<usize>> for IdxString {
+    type Output = str;
+    #[inline]
+    fn index(&self, range: Range<usize>) -> &Self::Output {
+        &self.body[range.start..range.end]
+    }
+}
+impl Index<RangeFrom<usize>> for IdxString {
+    type Output = str;
+    #[inline]
+    fn index(&self, range: RangeFrom<usize>) -> &Self::Output {
+        &self.body[range.start..]
+    }
+}
+impl Index<RangeTo<usize>> for IdxString {
+    type Output = str;
+    #[inline]
+    fn index(&self, range: RangeTo<usize>) -> &Self::Output {
+        &self.body[..range.end]
+    }
+}
+impl Index<RangeFull> for IdxString {
+    type Output = str;
+    #[inline]
+    fn index(&self, _: RangeFull) -> &Self::Output {
+        &self.body[..]
+    }
+}
+
 impl Index<Range<LineCol>> for IdxString {
     type Output = str;
-
     #[inline]
     fn index(&self, range: Range<LineCol>) -> &Self::Output {
         &self.body[self.offset(range.start)..self.offset(range.end)]
@@ -122,7 +154,6 @@ impl Index<Range<LineCol>> for IdxString {
 }
 impl Index<RangeFrom<LineCol>> for IdxString {
     type Output = str;
-
     #[inline]
     fn index(&self, range: RangeFrom<LineCol>) -> &Self::Output {
         &self.body[self.offset(range.start)..]
@@ -142,19 +173,31 @@ mod tests {
     use super::*;
 
     /// The test string.
+    /// 漢 and 字 are 3-byte characters.
     const STR: &str = r"abc
 漢字";
 
-    /// Tests `IdxString`.
+    /// Tests `IdxString::offset`.
     #[test]
-    fn test() {
+    fn test_offset() {
         let is = IdxString::from(STR);
-        // Tests `offset` and `linecol`.
         assert_eq!(is.offset(linecol(0, 3)), 3);
-        assert_eq!(is.linecol(3), linecol(0, 3));
         assert_eq!(is.offset(linecol(1, 1)), 7);
+    }
+
+    /// Tests `IdxString::linecol`.
+    #[test]
+    fn test_linecol() {
+        let is = IdxString::from(STR);
+        assert_eq!(is.linecol(3), linecol(0, 3));
         assert_eq!(is.linecol(7), linecol(1, 1));
-        // Tests index access by `LineCol`.
+    }
+
+    /// Tests index access
+    #[test]
+    fn test_index() {
+        let is = IdxString::from(STR);
+        assert_eq!(&is[0..3], "abc");
         assert_eq!(&is[linecol(0, 1)..linecol(1, 1)], "bc\n漢");
     }
 }
