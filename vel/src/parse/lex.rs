@@ -140,6 +140,8 @@ pub enum Token {
     },
     /// Identifier.
     Ident,
+    /// Lifetime identifier.
+    LftIdent,
     /// Line comment, `//...`.
     LineComment,
     /// Block comment, `/* ... */` (nestable).
@@ -169,6 +171,8 @@ pub enum LexErr {
         /// Number of unclosed `/*`s.
         open_cnt: usize,
     },
+    /// Stray quote.
+    StrayQuote,
     /// Invalid character.
     InvalidChar(char),
 }
@@ -217,6 +221,7 @@ impl Display for LexErrMsg {
                     if *open_cnt > 1 { "s" } else { "" }
                 )
             }
+            StrayQuote => write!(f, "Stray quote (')"),
             InvalidChar(c) => write!(f, "Invalid character {}", c),
         }
     }
@@ -245,14 +250,14 @@ impl NumKind {
 /// Lexer.
 /// Works in linear time, with only one lookahead.
 pub struct Lexer<'a> {
+    /// String.
+    s: &'a str,
+    /// Input iterator.
+    chars: Chars<'a>,
     /// Current head character.
     head: OrEof<char>,
     /// Current offset in bytes.
     offset: usize,
-    /// Input iterator.
-    chars: Chars<'a>,
-    /// String.
-    s: &'a str,
 }
 
 impl<'a> Lexer<'a> {
@@ -261,10 +266,10 @@ impl<'a> Lexer<'a> {
         let mut chars = s.chars();
         let head = chars.next().into();
         Self {
+            s,
+            chars,
             head,
             offset: 0,
-            chars,
-            s,
         }
     }
 
@@ -414,6 +419,8 @@ impl<'a> Lexer<'a> {
                 let from = self.offset;
                 return self.lex_num(from, Dec, false);
             }
+            // `'`
+            '\'' => self.mov_and().lex_quote(),
             // Name, starting with '_' or an alphabetic character
             _ if head == '_' || head.is_alphabetic() => return self.lex_name(),
             // Starting with a whitespace character
@@ -522,6 +529,26 @@ impl<'a> Lexer<'a> {
         })
     }
 
+    /// Lexes the next token, starting with `'`.
+    fn lex_quote(&mut self) -> OrEof<Token> {
+        let mut some_char = false;
+        loop {
+            match self.head {
+                // Continues for `_`, `0`-`9`, or an alphabetic character.
+                Just(head) if head == '_' || head.is_ascii_digit() || head.is_alphabetic() => {
+                    some_char = true;
+                    self.mov();
+                }
+                _ => break,
+            };
+        }
+        Just(if some_char {
+            LftIdent
+        } else {
+            Error(StrayQuote)
+        })
+    }
+
     /// Lexes a name.
     fn lex_name(&mut self) -> OrEof<Token> {
         let start = self.offset;
@@ -614,8 +641,8 @@ mod tests {
 fn let
 if else loop while break continue return
 true false 123i32
-abcde
-0b__xxx ♡ /*a/*b",
+abcde 'lft
+0b__xxx ♡ ' /*a/*b",
             vec![
                 ("/* a /* b */ c */", BlockComment),
                 ("// xxx", LineComment),
@@ -675,6 +702,7 @@ abcde
                     },
                 ),
                 ("abcde", Ident),
+                ("'lft", LftIdent),
                 (
                     "0b__xxx",
                     Error(EmptyNum {
@@ -683,6 +711,7 @@ abcde
                     }),
                 ),
                 ("♡", Error(InvalidChar('♡'))),
+                ("'", Error(StrayQuote)),
                 ("/*a/*b", Error(UnclosedBlockComment { open_cnt: 2 })),
             ],
         );

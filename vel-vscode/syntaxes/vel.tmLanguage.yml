@@ -30,3 +30,5 @@ patterns:
     match: \b[0-9]\w*\b
   - name: variable.other
     match: \b\w[_0-9\w]*\b
+  - name: storage.modifier.lifetime.rust
+    match: \'[_0-9\w]+\b

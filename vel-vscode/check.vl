@@ -1,5 +1,5 @@
 () [] {} , ; : . .. ..= ? ! - -> ~ = == + * # < <= <> > >= & && | || / ^ @ % $
 fn let if else loop while break continue return
 true false 123_456i32 0b01usize 0xbe_ef
-abc_def 漢字 // comment
+abc_def 漢字 'a  // comment
 /* block /* nested */ comment */
