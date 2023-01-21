@@ -2,7 +2,7 @@
 
 use super::cst::{Entry, FnDef, NameTy, Stmt, TopLevel, Whole};
 use super::lex::{Eof, Just, Lexer, OrEof, Token};
-use crate::util::pos::{Pos, Span};
+use crate::util::linecol::{LineCol, Span};
 use std::mem::replace;
 
 /// Parser.
@@ -17,8 +17,8 @@ pub struct Parser<I> {
 
 impl<I: Iterator<Item = char>> Parser<I> {
     /// Creates a new parser.
-    pub fn new(pos: Pos, input: I) -> Self {
-        let mut lexer = Lexer::new(pos, input);
+    pub fn new(lc: LineCol, input: I) -> Self {
+        let mut lexer = Lexer::new(lc, input);
         let mut ignored = Vec::new();
         let head = loop {
             match lexer.next() {
@@ -194,7 +194,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::pos::pos;
+    use crate::util::linecol::linecol;
 
     /// Parses.
     #[test]
@@ -202,7 +202,7 @@ mod tests {
         let text = r"// Function
 fn foo[i: int](a: I64, b: U64) -> (c: I64) {
 }";
-        let mut parser = Parser::new(pos(0, 0), text.chars());
+        let mut parser = Parser::new(linecol(0, 0), text.chars());
         assert_eq!(
             parser.parse_whole(),
             Whole {

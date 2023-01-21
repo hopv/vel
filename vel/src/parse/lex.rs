@@ -1,6 +1,6 @@
 //! Vel lexer.
 
-use crate::util::pos::{Pos, Span};
+use crate::util::linecol::{LineCol, Span};
 use std::fmt::{Display, Formatter, Result};
 
 /// Something or EOF.
@@ -336,27 +336,27 @@ pub struct Lexer<I> {
     /// Current head character.
     head: OrEof<char>,
     /// Current position.
-    pos: Pos,
+    lc: LineCol,
     /// Input iterator.
     input: I,
 }
 
 /// Creates a lexer.
 #[inline]
-pub fn lexer<I: Iterator<Item = char>>(pos: Pos, input: I) -> Lexer<I> {
-    Lexer::new(pos, input)
+pub fn lexer<I: Iterator<Item = char>>(lc: LineCol, input: I) -> Lexer<I> {
+    Lexer::new(lc, input)
 }
 
 impl<I: Iterator<Item = char>> Lexer<I> {
     /// Creates a lexer.
-    pub fn new(pos: Pos, mut input: I) -> Self {
+    pub fn new(lc: LineCol, mut input: I) -> Self {
         let head = input.next().into();
-        Self { head, pos, input }
+        Self { head, lc, input }
     }
 
     /// Gets the current position.
-    pub fn pos(&self) -> Pos {
-        self.pos
+    pub fn lc(&self) -> LineCol {
+        self.lc
     }
 
     /// Moves the cursor one character ahead.
@@ -365,7 +365,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
         match self.head {
             Eof => panic!("Cannot perform mov when the head is EOF"),
             Just(c) => {
-                self.pos = self.pos.after(c);
+                self.lc = self.lc.after(c);
                 self.head = self.input.next().into();
             }
         }
@@ -688,11 +688,11 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 impl<I: Iterator<Item = char>> Iterator for Lexer<I> {
     type Item = (Token, Span);
     fn next(&mut self) -> Option<Self::Item> {
-        let from = self.pos;
+        let from = self.lc;
         match self.lex() {
             Eof => None,
             Just(tok) => {
-                let to = self.pos;
+                let to = self.lc;
                 Some((tok, from..to))
             }
         }
@@ -702,7 +702,7 @@ impl<I: Iterator<Item = char>> Iterator for Lexer<I> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::pos::pos;
+    use crate::util::linecol::linecol;
     use std::fmt::Write;
 
     /// Big text containing all kinds of tokens.
@@ -722,7 +722,7 @@ abcde
     #[test]
     fn test_next_display() {
         let mut buf = String::new();
-        for (tok, _) in lexer(pos(0, 0), BIG.chars()) {
+        for (tok, _) in lexer(linecol(0, 0), BIG.chars()) {
             let _ = write!(buf, "{}", tok);
         }
         assert_eq!(BIG, buf);
@@ -730,7 +730,7 @@ abcde
 
     /// Tests lexing `s` against `get_want` parametrized over the context.
     fn test_lex(s: &str, want: Vec<(Token, Span)>) {
-        let res: Vec<_> = lexer(pos(0, 0), s.chars())
+        let res: Vec<_> = lexer(linecol(0, 0), s.chars())
             .filter(|tok| match tok.0 {
                 Whitespace { .. } => false,
                 _ => true,
@@ -752,61 +752,61 @@ abcde
                     BlockComment {
                         body: " a /* b */ c ".into(),
                     },
-                    pos(0, 0)..pos(0, 17),
+                    linecol(0, 0)..linecol(0, 17),
                 ),
                 (
                     LineComment {
                         body: " xxx".into(),
                     },
-                    pos(0, 18)..pos(0, 24),
+                    linecol(0, 18)..linecol(0, 24),
                 ),
-                (LParen, pos(1, 0)..pos(1, 1)),
-                (RParen, pos(1, 1)..pos(1, 2)),
-                (LBrack, pos(1, 3)..pos(1, 4)),
-                (RBrack, pos(1, 4)..pos(1, 5)),
-                (LCurly, pos(1, 6)..pos(1, 7)),
-                (RCurly, pos(1, 7)..pos(1, 8)),
-                (Comma, pos(2, 0)..pos(2, 1)),
-                (Semi, pos(2, 2)..pos(2, 3)),
-                (Colon, pos(2, 4)..pos(2, 5)),
-                (Dot, pos(2, 6)..pos(2, 7)),
-                (Dot2, pos(2, 8)..pos(2, 10)),
-                (Dot2Eq, pos(2, 11)..pos(2, 14)),
-                (Quest, pos(2, 15)..pos(2, 16)),
-                (Bang, pos(2, 17)..pos(2, 18)),
-                (Dash, pos(3, 0)..pos(3, 1)),
-                (DashGt, pos(3, 2)..pos(3, 4)),
-                (Tilde, pos(3, 5)..pos(3, 6)),
-                (Eq, pos(3, 7)..pos(3, 8)),
-                (Eq2, pos(3, 9)..pos(3, 11)),
-                (Plus, pos(3, 12)..pos(3, 13)),
-                (Star, pos(3, 14)..pos(3, 15)),
-                (Hash, pos(3, 16)..pos(3, 17)),
-                (Lt, pos(4, 0)..pos(4, 1)),
-                (LtEq, pos(4, 2)..pos(4, 4)),
-                (LtGt, pos(4, 5)..pos(4, 7)),
-                (Gt, pos(4, 8)..pos(4, 9)),
-                (GtEq, pos(4, 10)..pos(4, 12)),
-                (Amp, pos(5, 0)..pos(5, 1)),
-                (Amp2, pos(5, 2)..pos(5, 4)),
-                (Bar, pos(5, 5)..pos(5, 6)),
-                (Bar2, pos(5, 7)..pos(5, 9)),
-                (Slash, pos(5, 10)..pos(5, 11)),
-                (Hat, pos(5, 12)..pos(5, 13)),
-                (At, pos(5, 14)..pos(5, 15)),
-                (Percent, pos(5, 16)..pos(5, 17)),
-                (Dollar, pos(5, 18)..pos(5, 19)),
-                (Fn, pos(6, 0)..pos(6, 2)),
-                (Let, pos(6, 3)..pos(6, 6)),
-                (If, pos(7, 0)..pos(7, 2)),
-                (Else, pos(7, 3)..pos(7, 7)),
-                (Loop, pos(7, 8)..pos(7, 12)),
-                (While, pos(7, 13)..pos(7, 18)),
-                (Break, pos(7, 19)..pos(7, 24)),
-                (Continue, pos(7, 25)..pos(7, 33)),
-                (Return, pos(7, 34)..pos(7, 40)),
-                (True, pos(8, 0)..pos(8, 4)),
-                (False, pos(8, 5)..pos(8, 10)),
+                (LParen, linecol(1, 0)..linecol(1, 1)),
+                (RParen, linecol(1, 1)..linecol(1, 2)),
+                (LBrack, linecol(1, 3)..linecol(1, 4)),
+                (RBrack, linecol(1, 4)..linecol(1, 5)),
+                (LCurly, linecol(1, 6)..linecol(1, 7)),
+                (RCurly, linecol(1, 7)..linecol(1, 8)),
+                (Comma, linecol(2, 0)..linecol(2, 1)),
+                (Semi, linecol(2, 2)..linecol(2, 3)),
+                (Colon, linecol(2, 4)..linecol(2, 5)),
+                (Dot, linecol(2, 6)..linecol(2, 7)),
+                (Dot2, linecol(2, 8)..linecol(2, 10)),
+                (Dot2Eq, linecol(2, 11)..linecol(2, 14)),
+                (Quest, linecol(2, 15)..linecol(2, 16)),
+                (Bang, linecol(2, 17)..linecol(2, 18)),
+                (Dash, linecol(3, 0)..linecol(3, 1)),
+                (DashGt, linecol(3, 2)..linecol(3, 4)),
+                (Tilde, linecol(3, 5)..linecol(3, 6)),
+                (Eq, linecol(3, 7)..linecol(3, 8)),
+                (Eq2, linecol(3, 9)..linecol(3, 11)),
+                (Plus, linecol(3, 12)..linecol(3, 13)),
+                (Star, linecol(3, 14)..linecol(3, 15)),
+                (Hash, linecol(3, 16)..linecol(3, 17)),
+                (Lt, linecol(4, 0)..linecol(4, 1)),
+                (LtEq, linecol(4, 2)..linecol(4, 4)),
+                (LtGt, linecol(4, 5)..linecol(4, 7)),
+                (Gt, linecol(4, 8)..linecol(4, 9)),
+                (GtEq, linecol(4, 10)..linecol(4, 12)),
+                (Amp, linecol(5, 0)..linecol(5, 1)),
+                (Amp2, linecol(5, 2)..linecol(5, 4)),
+                (Bar, linecol(5, 5)..linecol(5, 6)),
+                (Bar2, linecol(5, 7)..linecol(5, 9)),
+                (Slash, linecol(5, 10)..linecol(5, 11)),
+                (Hat, linecol(5, 12)..linecol(5, 13)),
+                (At, linecol(5, 14)..linecol(5, 15)),
+                (Percent, linecol(5, 16)..linecol(5, 17)),
+                (Dollar, linecol(5, 18)..linecol(5, 19)),
+                (Fn, linecol(6, 0)..linecol(6, 2)),
+                (Let, linecol(6, 3)..linecol(6, 6)),
+                (If, linecol(7, 0)..linecol(7, 2)),
+                (Else, linecol(7, 3)..linecol(7, 7)),
+                (Loop, linecol(7, 8)..linecol(7, 12)),
+                (While, linecol(7, 13)..linecol(7, 18)),
+                (Break, linecol(7, 19)..linecol(7, 24)),
+                (Continue, linecol(7, 25)..linecol(7, 33)),
+                (Return, linecol(7, 34)..linecol(7, 40)),
+                (True, linecol(8, 0)..linecol(8, 4)),
+                (False, linecol(8, 5)..linecol(8, 10)),
                 (
                     Num {
                         kind: Dec,
@@ -814,13 +814,13 @@ abcde
                         suffix: "i32".into(),
                         val: 123,
                     },
-                    pos(8, 11)..pos(8, 17),
+                    linecol(8, 11)..linecol(8, 17),
                 ),
                 (
                     Ident {
                         name: "abcde".into(),
                     },
-                    pos(9, 0)..pos(9, 5),
+                    linecol(9, 0)..linecol(9, 5),
                 ),
                 (
                     Error(EmptyNum {
@@ -828,15 +828,18 @@ abcde
                         digits: "__".into(),
                         suffix: "xxx".into(),
                     }),
-                    pos(10, 0)..pos(10, 7),
+                    linecol(10, 0)..linecol(10, 7),
                 ),
-                (Error(InvalidChar { c: '♡' }), pos(10, 8)..pos(10, 9)),
+                (
+                    Error(InvalidChar { c: '♡' }),
+                    linecol(10, 8)..linecol(10, 9),
+                ),
                 (
                     Error(UnclosedBlockComment {
                         body: "a/*b".into(),
                         open_cnt: 2,
                     }),
-                    pos(10, 10)..pos(10, 16),
+                    linecol(10, 10)..linecol(10, 16),
                 ),
             ],
         );
@@ -852,13 +855,13 @@ abcde
                     Ident {
                         name: "ab1_cde".into(),
                     },
-                    pos(0, 0)..pos(0, 7),
+                    linecol(0, 0)..linecol(0, 7),
                 ),
                 (
                     Ident {
                         name: "漢字".into(),
                     },
-                    pos(0, 8)..pos(0, 10),
+                    linecol(0, 8)..linecol(0, 10),
                 ),
             ],
         )
@@ -879,7 +882,7 @@ abcde
                         suffix: "".into(),
                         val: 0,
                     },
-                    pos(0, 0)..pos(0, 1),
+                    linecol(0, 0)..linecol(0, 1),
                 ),
                 (
                     Num {
@@ -888,7 +891,7 @@ abcde
                         suffix: "i32".into(),
                         val: 0123,
                     },
-                    pos(0, 2)..pos(0, 9),
+                    linecol(0, 2)..linecol(0, 9),
                 ),
                 (
                     Num {
@@ -897,7 +900,7 @@ abcde
                         suffix: "".into(),
                         val: 1_234_567_890,
                     },
-                    pos(0, 10)..pos(0, 23),
+                    linecol(0, 10)..linecol(0, 23),
                 ),
                 (
                     Num {
@@ -906,7 +909,7 @@ abcde
                         suffix: "usize".into(),
                         val: 0b0101_1010,
                     },
-                    pos(1, 0)..pos(1, 16),
+                    linecol(1, 0)..linecol(1, 16),
                 ),
                 (
                     Num {
@@ -915,7 +918,7 @@ abcde
                         suffix: "u64".into(),
                         val: 0xab_01_EF,
                     },
-                    pos(2, 0)..pos(2, 13),
+                    linecol(2, 0)..linecol(2, 13),
                 ),
             ],
         )
