@@ -7,11 +7,11 @@ use std::ops::Range;
 use super::lex::{Eof, Just, Lexer, OrEof, Token};
 
 /// Copy.
-trait XCopy {
+pub trait CopyExt {
     fn copy(&self) -> Self;
 }
 
-impl<T: Copy> XCopy for Range<T> {
+impl<T: Copy> CopyExt for Range<T> {
     /// Copy a range.
     fn copy(&self) -> Range<T> {
         self.start..self.end
@@ -82,13 +82,13 @@ pub use Stmt::*;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Ident {
     gap: Gap,
-    range: Range<usize>,
+    span: Range<usize>,
 }
 
 impl Ident {
     /// The string for the identifier.
     pub fn str<'a>(&self, s: &'a str) -> &'a str {
-        &s[self.range.copy()]
+        &s[self.span.copy()]
     }
 }
 
@@ -96,13 +96,13 @@ impl Ident {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct LftIdent {
     gap: Gap,
-    range: Range<usize>,
+    span: Range<usize>,
 }
 
 impl LftIdent {
     /// The string for the lifetime identifier.
     pub fn str<'a>(&self, s: &'a str) -> &'a str {
-        &s[self.range.copy()]
+        &s[self.span.copy()]
     }
 }
 
@@ -288,7 +288,7 @@ impl Parse for Ty {
 impl Parse for Ident {
     fn parse(parser: &mut Parser<'_>) -> Self {
         match parser.mov() {
-            (Token::Ident, range, gap) => Ident { gap, range },
+            (Token::Ident, span, gap) => Ident { gap, span },
             _ => todo!(),
         }
     }
@@ -297,7 +297,7 @@ impl Parse for Ident {
 impl Parse for LftIdent {
     fn parse(parser: &mut Parser<'_>) -> Self {
         match parser.mov() {
-            (Token::LftIdent, range, gap) => LftIdent { gap, range },
+            (Token::LftIdent, span, gap) => LftIdent { gap, span },
             _ => todo!(),
         }
     }

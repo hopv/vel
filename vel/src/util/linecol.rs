@@ -1,4 +1,4 @@
-//! Position and span utilities.
+//! Position utilities.
 
 use std::fmt::Display;
 

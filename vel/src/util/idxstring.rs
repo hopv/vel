@@ -119,22 +119,22 @@ impl Deref for IdxString {
 impl Index<Range<usize>> for IdxString {
     type Output = str;
     #[inline]
-    fn index(&self, range: Range<usize>) -> &Self::Output {
-        &self.body[range.start..range.end]
+    fn index(&self, span: Range<usize>) -> &Self::Output {
+        &self.body[span.start..span.end]
     }
 }
 impl Index<RangeFrom<usize>> for IdxString {
     type Output = str;
     #[inline]
-    fn index(&self, range: RangeFrom<usize>) -> &Self::Output {
-        &self.body[range.start..]
+    fn index(&self, span: RangeFrom<usize>) -> &Self::Output {
+        &self.body[span.start..]
     }
 }
 impl Index<RangeTo<usize>> for IdxString {
     type Output = str;
     #[inline]
-    fn index(&self, range: RangeTo<usize>) -> &Self::Output {
-        &self.body[..range.end]
+    fn index(&self, span: RangeTo<usize>) -> &Self::Output {
+        &self.body[..span.end]
     }
 }
 impl Index<RangeFull> for IdxString {
@@ -148,23 +148,23 @@ impl Index<RangeFull> for IdxString {
 impl Index<Range<LineCol>> for IdxString {
     type Output = str;
     #[inline]
-    fn index(&self, range: Range<LineCol>) -> &Self::Output {
-        &self.body[self.offset(range.start)..self.offset(range.end)]
+    fn index(&self, span: Range<LineCol>) -> &Self::Output {
+        &self.body[self.offset(span.start)..self.offset(span.end)]
     }
 }
 impl Index<RangeFrom<LineCol>> for IdxString {
     type Output = str;
     #[inline]
-    fn index(&self, range: RangeFrom<LineCol>) -> &Self::Output {
-        &self.body[self.offset(range.start)..]
+    fn index(&self, span: RangeFrom<LineCol>) -> &Self::Output {
+        &self.body[self.offset(span.start)..]
     }
 }
 impl Index<RangeTo<LineCol>> for IdxString {
     type Output = str;
 
     #[inline]
-    fn index(&self, range: RangeTo<LineCol>) -> &Self::Output {
-        &self.body[..self.offset(range.end)]
+    fn index(&self, span: RangeTo<LineCol>) -> &Self::Output {
+        &self.body[..self.offset(span.end)]
     }
 }
 
