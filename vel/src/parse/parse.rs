@@ -4,19 +4,8 @@ use std::marker::PhantomData;
 use std::mem::replace;
 use std::ops::Range;
 
-use super::lex::{Eof, Just, Lexer, OrEof, Token};
-
-/// Copy.
-pub trait CopyExt {
-    fn copy(&self) -> Self;
-}
-
-impl<T: Copy> CopyExt for Range<T> {
-    /// Copy a range.
-    fn copy(&self) -> Range<T> {
-        self.start..self.end
-    }
-}
+use super::lex::{Lexer, Token};
+use crate::util::basic::{CopyExt, Eof, Just, OrEof};
 
 /// Contents of a whole file.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
