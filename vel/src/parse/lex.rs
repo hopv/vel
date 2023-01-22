@@ -570,8 +570,11 @@ impl<'a> Lexer<'a> {
     }
 }
 
+/// Span in a string.
+pub type Span = Range<usize>;
+
 impl Iterator for Lexer<'_> {
-    type Item = (Token, Range<usize>);
+    type Item = (Token, Span);
     fn next(&mut self) -> Option<Self::Item> {
         let start = self.offset;
         match self.lex() {

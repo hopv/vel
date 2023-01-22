@@ -2,9 +2,8 @@
 
 use std::marker::PhantomData;
 use std::mem::replace;
-use std::ops::Range;
 
-use super::lex::{Lexer, Token};
+use super::lex::{Lexer, Span, Token};
 use crate::util::basic::{CopyExt, Eof, Just, OrEof};
 
 /// Contents of a whole file.
@@ -71,7 +70,7 @@ pub use Stmt::*;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Ident {
     gap: Gap,
-    span: Range<usize>,
+    span: Span,
 }
 
 impl Ident {
@@ -85,7 +84,7 @@ impl Ident {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct LftIdent {
     gap: Gap,
-    span: Range<usize>,
+    span: Span,
 }
 
 impl LftIdent {
@@ -127,14 +126,14 @@ pub type CurlyedCommaed<T> = DelimedCommaed<Curly, T>;
 pub enum Curly {}
 
 /// Gap tokens.
-pub type Gap = Vec<(Token, Range<usize>)>;
+pub type Gap = Vec<(Token, Span)>;
 
 /// Parser.
 pub struct Parser<'a> {
     /// Lexer.
     lexer: Lexer<'a>,
     /// Head token.
-    head: OrEof<(Token, Range<usize>)>,
+    head: OrEof<(Token, Span)>,
     /// Gap.
     gap: Gap,
 }
@@ -161,7 +160,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Moves to the next token, returning the current state.
-    fn mov(&mut self) -> (Token, Range<usize>, Vec<(Token, Range<usize>)>) {
+    fn mov(&mut self) -> (Token, Span, Vec<(Token, Span)>) {
         let old_head = match replace(&mut self.head, Eof) {
             Eof => panic!("Should not call mov when the head is EOF"),
             Just(head) => head,
