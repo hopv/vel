@@ -25,6 +25,16 @@ pub enum OrEof<T> {
 }
 pub use OrEof::*;
 
+impl<T> OrEof<T> {
+    /// Turns `Just(v)` into `v`.
+    pub fn unwrap(self) -> T {
+        match self {
+            Just(v) => v,
+            Eof => panic!("OrEof::unwrap called on Eof"),
+        }
+    }
+}
+
 impl<T> From<Option<T>> for OrEof<T> {
     fn from(o: Option<T>) -> Self {
         match o {

@@ -3,7 +3,7 @@
 use std::marker::PhantomData;
 use std::mem::replace;
 
-use super::lex::{Lexer, Span, Token};
+use super::lex::{LexErr, Lexer, Span, Token};
 use crate::util::basic::{CopyExt, Eof, Just, OrEof};
 
 /// Contents of a whole file.
@@ -125,8 +125,27 @@ pub type CurlyedCommaed<T> = DelimedCommaed<Curly, T>;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Curly {}
 
-/// Gap tokens.
-pub type Gap = Vec<(Token, Span)>;
+/// Gap.
+pub type Gap = Vec<(GapToken, Span)>;
+
+/// Token in a gap
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum GapToken {
+    /// Line comment, `//...`.
+    LineComment,
+    /// Block comment, `/* ... */` (nestable).
+    BlockComment,
+    /// Whitespace.
+    Whitespace {
+        /// The number of newlines `\n`.
+        newline_cnt: usize,
+    },
+    /// Lexing error.
+    LexErr(LexErr),
+    /// Skipped token
+    Skipped(Token),
+}
+use GapToken::*;
 
 /// Parser.
 pub struct Parser<'a> {
@@ -141,60 +160,68 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
     /// Creates a new parser.
     pub fn new(s: &'a str) -> Self {
-        let mut lexer = Lexer::new(s);
-        let mut gap = Vec::new();
-        let head = loop {
-            match lexer.next() {
-                None => break Eof,
-                Some((tok, span)) => {
-                    if Self::is_gap_tok(&tok) {
-                        gap.push((tok, span));
-                        continue;
-                    } else {
-                        break Just((tok, span));
-                    }
-                }
-            }
+        let mut res = Self {
+            lexer: Lexer::new(s),
+            head: Eof,
+            gap: Vec::new(),
         };
-        Self { lexer, head, gap }
+        res.skim();
+        res
+    }
+
+    /// Gets the head token.
+    fn head_tok(&self) -> OrEof<&Token> {
+        match &self.head {
+            Eof => Eof,
+            Just((tok, _)) => Just(tok),
+        }
     }
 
     /// Moves to the next token, returning the current state.
-    fn mov(&mut self) -> (Token, Span, Vec<(Token, Span)>) {
+    fn mov(&mut self) -> (Token, Span, Gap) {
         let old_head = match replace(&mut self.head, Eof) {
             Eof => panic!("Should not call mov when the head is EOF"),
             Just(head) => head,
         };
         let old_gap = replace(&mut self.gap, Vec::new());
+        self.skim();
+        (old_head.0, old_head.1, old_gap)
+    }
+
+    /// Inputs tokens until reaching a non-gap token and sets the head token.
+    fn skim(&mut self) {
         self.head = loop {
             match self.lexer.next() {
                 None => break Eof,
                 Some((tok, span)) => {
-                    if Self::is_gap_tok(&tok) {
-                        self.gap.push((tok, span));
-                        continue;
-                    } else {
-                        break Just((tok, span));
-                    }
+                    let gaptok = match tok {
+                        Token::Whitespace { newline_cnt } => Whitespace { newline_cnt },
+                        Token::LineComment => LineComment,
+                        Token::BlockComment => BlockComment,
+                        Token::Error(e) => LexErr(e),
+                        _ => break Just((tok, span)),
+                    };
+                    self.gap.push((gaptok, span));
                 }
             }
-        };
-        (old_head.0, old_head.1, old_gap)
-    }
-
-    /// Judges if the token always goes to a gap.
-    fn is_gap_tok(tok: &Token) -> bool {
-        match tok {
-            Token::Whitespace { .. }
-            | Token::LineComment { .. }
-            | Token::BlockComment { .. }
-            | Token::Error { .. } => true,
-            _ => false,
         }
     }
 
+    /// Skip the head token.
+    pub fn skip(&mut self) {
+        let (tok, span) = replace(&mut self.head, Eof).unwrap();
+        self.gap.push((Skipped(tok), span));
+        self.skim();
+    }
+
+    /// Parses an object.
     pub fn parse<T: Parse>(&mut self) -> T {
         T::parse(self)
+    }
+
+    /// Damps the current gap.
+    pub fn damp_gap(&mut self) -> Gap {
+        replace(&mut self.gap, Vec::new())
     }
 }
 
@@ -205,10 +232,19 @@ pub trait Parse {
 
 impl Parse for Whole {
     fn parse(parser: &mut Parser<'_>) -> Self {
-        let fn_def = parser.parse();
-        let gap_eof = replace(&mut parser.gap, Vec::new());
+        let mut top_levels = Vec::new();
+        loop {
+            match parser.head_tok() {
+                Eof => break,
+                // Function definition.
+                Just(Token::Fn) => top_levels.push(FnDef(parser.parse())),
+                // Skips when the head token is not a top-level item.
+                _ => parser.skip(),
+            }
+        }
+        let gap_eof = parser.damp_gap();
         Whole {
-            top_levels: vec![FnDef(fn_def)],
+            top_levels,
             gap_eof,
         }
     }
@@ -369,13 +405,14 @@ mod tests {
     /// Parses.
     #[test]
     fn test() {
-        let text = r"// Function
+        let text = r"+ // Function
 fn foo['lft](a: I64, b: U64) -> (c: I128) {
 }";
         let mut parser = Parser::new(text);
         let whole: Whole = parser.parse();
         match whole.top_levels.as_slice() {
             [FnDef(FnDef {
+                gap_fn,
                 name,
                 ext_lfts: DelimedCommaed {
                     items: ext_lfts, ..
@@ -383,8 +420,9 @@ fn foo['lft](a: I64, b: U64) -> (c: I128) {
                 inputs,
                 outputs,
                 body: Empty,
-                ..
             })] => {
+                assert_eq!(&gap_fn[0].0, &Skipped(Token::Plus));
+                assert_eq!(&gap_fn[2].0, &LineComment);
                 assert_eq!(name.str(text), "foo");
                 match ext_lfts.as_ref() {
                     [lft] => assert_eq!(lft.str(text), "'lft"),
