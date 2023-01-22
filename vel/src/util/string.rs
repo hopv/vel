@@ -63,8 +63,9 @@ pub fn linecol(line: usize, col: usize) -> LineCol {
 }
 
 impl Display for LineCol {
+    /// Displays 1-based line and column numbers.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.line, self.col)
+        write!(f, "{}:{}", self.line + 1, self.col + 1)
     }
 }
 
