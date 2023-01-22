@@ -50,9 +50,9 @@ impl AddAssign<usize> for CharIdx {
 /// A position in a string represented in the line and column numbers.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct LineCol {
-    /// Line number, 0-origin.
+    /// Line number, 0-based.
     pub line: usize,
-    /// Column number, 0-origin.
+    /// Column number, 0-based.
     pub col: usize,
 }
 
@@ -90,15 +90,15 @@ impl LineCol {
 pub struct IdxString {
     /// Body string.
     body: String,
-    /// Caches the following info: The `line`-th (0-origin) line
-    /// starts with the `line_idxs[line]`-th (0-origin) Unicode character (not byte).
+    /// Caches the following info: The `line`-th (0-based) line
+    /// starts with the `line_idxs[line]`-th (0-based) Unicode character (not byte).
     line_idxs: Vec<CharIdx>,
-    /// Caches the following info: The `idx`-th (0-origin) Unicode character
-    /// is the `char_offsets[idx]`-th (0-origin) byte.
+    /// Caches the following info: The `idx`-th (0-based) Unicode character
+    /// is the `char_offsets[idx]`-th (0-based) byte.
     ///
     /// `char_offsets.len()` - 1 equals the number of Unicode characters in the string.
     char_offsets: Vec<Offset>,
-    /// Caches the following info: The character at the `offset`-th (0-origin) byte
+    /// Caches the following info: The character at the `offset`-th (0-based) byte
     /// has the line-column position `linecols[offset]`.
     linecols: Vec<LineCol>,
 }
