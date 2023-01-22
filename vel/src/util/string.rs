@@ -1,7 +1,49 @@
 //! String utilities.
 
 use std::fmt::Display;
-use std::ops::{Deref, Index, Range, RangeFrom, RangeFull, RangeTo};
+use std::ops::{Add, AddAssign, Deref, Index, Range, RangeFrom, RangeFull, RangeTo};
+
+///////////////////////////////////////////////////////////////////////////////
+
+/// Byte offset in a string.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct Offset(usize);
+
+impl Add<usize> for Offset {
+    type Output = Self;
+    #[inline]
+    fn add(self, rhs: usize) -> Self::Output {
+        Offset(self.0 + rhs)
+    }
+}
+
+impl AddAssign<usize> for Offset {
+    #[inline]
+    fn add_assign(&mut self, rhs: usize) {
+        self.0 += rhs;
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+/// Character index.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct CharIdx(usize);
+
+impl Add<usize> for CharIdx {
+    type Output = Self;
+    #[inline]
+    fn add(self, rhs: usize) -> Self::Output {
+        CharIdx(self.0 + rhs)
+    }
+}
+
+impl AddAssign<usize> for CharIdx {
+    #[inline]
+    fn add_assign(&mut self, rhs: usize) {
+        self.0 += rhs;
+    }
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -50,12 +92,12 @@ pub struct IdxString {
     body: String,
     /// Caches the following info: The `line`-th (0-origin) line
     /// starts with the `line_idxs[line]`-th (0-origin) Unicode character (not byte).
-    line_idxs: Vec<usize>,
+    line_idxs: Vec<CharIdx>,
     /// Caches the following info: The `idx`-th (0-origin) Unicode character
     /// is the `char_offsets[idx]`-th (0-origin) byte.
     ///
     /// `char_offsets.len()` - 1 equals the number of Unicode characters in the string.
-    char_offsets: Vec<usize>,
+    char_offsets: Vec<Offset>,
     /// Caches the following info: The character at the `offset`-th (0-origin) byte
     /// has the line-column position `linecols[offset]`.
     linecols: Vec<LineCol>,
@@ -67,8 +109,8 @@ impl IdxString {
     pub fn new() -> Self {
         IdxString {
             body: String::new(),
-            line_idxs: vec![0],
-            char_offsets: vec![0],
+            line_idxs: vec![CharIdx(0)],
+            char_offsets: vec![Offset(0)],
             linecols: vec![linecol(0, 0)],
         }
     }
@@ -82,7 +124,7 @@ impl IdxString {
         for c in s.chars() {
             self.body.push(c);
             if c == '\n' {
-                self.line_idxs.push(self.char_offsets.len());
+                self.line_idxs.push(CharIdx(self.char_offsets.len()));
             }
             // `l` is from 1 to 4 inclusive.
             let l = c.len_utf8();
@@ -105,17 +147,17 @@ impl IdxString {
     ///
     /// Works in *O*(1) time.
     #[inline]
-    pub fn linecol(&self, offset: usize) -> LineCol {
-        self.linecols[offset]
+    pub fn linecol(&self, o: Offset) -> LineCol {
+        self.linecols[o.0]
     }
 
     /// Translates a line-column position into an offset.
     ///
     /// Works in *O*(1) time.
     #[inline]
-    pub fn offset(&self, lc: LineCol) -> usize {
+    pub fn offset(&self, lc: LineCol) -> Offset {
         let LineCol { line, col } = lc;
-        self.char_offsets[self.line_idxs[line] + col]
+        self.char_offsets[(self.line_idxs[line] + col).0]
     }
 }
 
@@ -153,25 +195,25 @@ impl Deref for IdxString {
     }
 }
 
-impl Index<Range<usize>> for IdxString {
+impl Index<Range<Offset>> for IdxString {
     type Output = str;
     #[inline]
-    fn index(&self, span: Range<usize>) -> &Self::Output {
-        &self.body[span.start..span.end]
+    fn index(&self, span: Range<Offset>) -> &Self::Output {
+        &self.body[span.start.0..span.end.0]
     }
 }
-impl Index<RangeFrom<usize>> for IdxString {
+impl Index<RangeFrom<Offset>> for IdxString {
     type Output = str;
     #[inline]
-    fn index(&self, span: RangeFrom<usize>) -> &Self::Output {
-        &self.body[span.start..]
+    fn index(&self, span: RangeFrom<Offset>) -> &Self::Output {
+        &self.body[span.start.0..]
     }
 }
-impl Index<RangeTo<usize>> for IdxString {
+impl Index<RangeTo<Offset>> for IdxString {
     type Output = str;
     #[inline]
-    fn index(&self, span: RangeTo<usize>) -> &Self::Output {
-        &self.body[..span.end]
+    fn index(&self, span: RangeTo<Offset>) -> &Self::Output {
+        &self.body[..span.end.0]
     }
 }
 impl Index<RangeFull> for IdxString {
@@ -186,14 +228,14 @@ impl Index<Range<LineCol>> for IdxString {
     type Output = str;
     #[inline]
     fn index(&self, span: Range<LineCol>) -> &Self::Output {
-        &self.body[self.offset(span.start)..self.offset(span.end)]
+        &self[self.offset(span.start)..self.offset(span.end)]
     }
 }
 impl Index<RangeFrom<LineCol>> for IdxString {
     type Output = str;
     #[inline]
     fn index(&self, span: RangeFrom<LineCol>) -> &Self::Output {
-        &self.body[self.offset(span.start)..]
+        &self[self.offset(span.start)..]
     }
 }
 impl Index<RangeTo<LineCol>> for IdxString {
@@ -201,7 +243,7 @@ impl Index<RangeTo<LineCol>> for IdxString {
 
     #[inline]
     fn index(&self, span: RangeTo<LineCol>) -> &Self::Output {
-        &self.body[..self.offset(span.end)]
+        &self[..self.offset(span.end)]
     }
 }
 
@@ -218,23 +260,23 @@ mod tests {
     #[test]
     fn test_offset() {
         let is = IdxString::from(STR);
-        assert_eq!(is.offset(linecol(0, 3)), 3);
-        assert_eq!(is.offset(linecol(1, 1)), 7);
+        assert_eq!(is.offset(linecol(0, 3)), Offset(3));
+        assert_eq!(is.offset(linecol(1, 1)), Offset(7));
     }
 
     /// Tests `IdxString::linecol`.
     #[test]
     fn test_linecol() {
         let is = IdxString::from(STR);
-        assert_eq!(is.linecol(3), linecol(0, 3));
-        assert_eq!(is.linecol(7), linecol(1, 1));
+        assert_eq!(is.linecol(Offset(3)), linecol(0, 3));
+        assert_eq!(is.linecol(Offset(7)), linecol(1, 1));
     }
 
     /// Tests index access
     #[test]
     fn test_index() {
         let is = IdxString::from(STR);
-        assert_eq!(&is[0..3], "abc");
+        assert_eq!(&is[Offset(0)..Offset(3)], "abc");
         assert_eq!(&is[linecol(0, 1)..linecol(1, 1)], "bc\n漢");
     }
 }
