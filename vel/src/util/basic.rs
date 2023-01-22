@@ -3,6 +3,8 @@
 use std::fmt::{Display, Formatter, Result};
 use std::ops::Range;
 
+////////////////////////////////////////////////////////////////////////////////
+
 /// Trait for an external copy method.
 pub trait CopyExt {
     fn copy(&self) -> Self;
@@ -14,6 +16,8 @@ impl<T: Copy> CopyExt for Range<T> {
         self.start..self.end
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 /// Something or EOF.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]

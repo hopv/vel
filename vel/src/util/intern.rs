@@ -5,6 +5,8 @@ use std::fmt::{Debug, Display};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{collections::hash_map::HashMap, hash::Hash};
 
+////////////////////////////////////////////////////////////////////////////////
+
 /// Intern, wrapping `&'arn T`.
 ///
 /// Created only by `Interner`/`StrInterner`'s `intern`.
@@ -99,6 +101,8 @@ impl<T: ?Sized> std::ops::Deref for Intern<'_, T> {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 /// Interns objects of a sized type `T`.
 /// Every instance of `Interner<T>` has a unique `interner_id`.
 #[derive(Debug)]
@@ -147,6 +151,8 @@ impl<'arn, T: Clone + Eq + Hash> Interner<'arn, T> {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 /// Interns strings.
 /// Every instance of `StrInterner<T>` has a unique `interner_id`.
 pub struct StrInterner<'arn> {
@@ -193,6 +199,8 @@ impl<'arn> StrInterner<'arn> {
         }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 #[cfg(test)]
 mod tests {

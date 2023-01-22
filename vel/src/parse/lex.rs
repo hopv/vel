@@ -6,6 +6,8 @@ use std::str::Chars;
 
 use crate::util::basic::{Eof, Just, OrEof};
 
+////////////////////////////////////////////////////////////////////////////////
+
 /// Vel token.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum Token {
@@ -130,6 +132,8 @@ pub enum Token {
 }
 pub use Token::*;
 
+////////////////////////////////////////////////////////////////////////////////
+
 /// Vel lexing error.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum LexErr {
@@ -151,18 +155,6 @@ pub enum LexErr {
     InvalidChar(char),
 }
 pub use LexErr::*;
-
-/// Integer numeric literal kind.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum NumKind {
-    /// Decimal.
-    Dec,
-    /// Binary.
-    Bin,
-    /// Hexadecimal.
-    Hex,
-}
-pub use NumKind::*;
 
 impl LexErr {
     /// Displays the error message.
@@ -201,6 +193,20 @@ impl Display for LexErrMsg {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+/// Integer numeric literal kind.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum NumKind {
+    /// Decimal.
+    Dec,
+    /// Binary.
+    Bin,
+    /// Hexadecimal.
+    Hex,
+}
+pub use NumKind::*;
+
 impl Display for NumKind {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
@@ -220,6 +226,8 @@ impl NumKind {
         }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 /// Lexer.
 /// Works in linear time, with only one lookahead.
@@ -586,6 +594,8 @@ impl Iterator for Lexer<'_> {
         }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 #[cfg(test)]
 mod tests {

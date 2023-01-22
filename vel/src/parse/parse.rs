@@ -6,6 +6,8 @@ use std::mem::replace;
 use super::lex::{LexErr, Lexer, Span, Token};
 use crate::util::basic::{CopyExt, Eof, Just, OrEof};
 
+////////////////////////////////////////////////////////////////////////////////
+
 /// Contents of a whole file.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Whole {
@@ -147,6 +149,8 @@ pub enum GapToken {
 }
 use GapToken::*;
 
+////////////////////////////////////////////////////////////////////////////////
+
 /// Parser.
 pub struct Parser<'a> {
     /// Lexer.
@@ -229,6 +233,8 @@ impl<'a> Parser<'a> {
 pub trait Parse {
     fn parse(parser: &mut Parser<'_>) -> Self;
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 impl Parse for Whole {
     fn parse(parser: &mut Parser<'_>) -> Self {
@@ -397,6 +403,8 @@ impl Delim for Curly {
         Token::RCurly
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 #[cfg(test)]
 mod tests {
